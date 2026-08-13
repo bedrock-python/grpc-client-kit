@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint:
+    name: Lint & type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --group dev --all-extras
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run mypy grpc_client_kit
+
+  test-unit:
+    name: Unit tests (Python ${{ matrix.python-version }})
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --group dev --all-extras
+      - run: uv run pytest -m unit --cov=grpc_client_kit --cov-report=xml --cov-fail-under=90
+      - uses: codecov/codecov-action@v6
+        if: matrix.python-version == '3.12'
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+        continue-on-error: true
+
+  test-integration:
+    name: Integration tests
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --group dev --all-extras
+      - name: Run integration tests
+        run: |
+          set +e
+          uv run pytest -m integration
+          STATUS=$?
+          set -e
+          test $STATUS -eq 0 -o $STATUS -eq 5
+
+  # Sentinel job — use this as the single required status check in branch protection.
+  all-checks-passed:
+    name: All checks passed
+    if: always()
+    needs: [lint, test-unit, test-integration]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all jobs succeeded
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more required checks failed."
+            exit 1
+          fi
+          echo "All checks passed."
