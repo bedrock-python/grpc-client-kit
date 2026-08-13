@@ -33,7 +33,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --group dev --all-extras
       - run: uv run pytest -m unit --cov=grpc_client_kit --cov-report=xml --cov-fail-under=90
-      - uses: codecov/codecov-action@v6
+      - uses: codecov/codecov-action@v7
         if: matrix.python-version == '3.12'
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
