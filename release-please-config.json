@@ -4,13 +4,7 @@
     ".": {
       "release-type": "python",
       "package-name": "grpc-client-kit",
-      "changelog-path": "CHANGELOG.md",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "grpc_client_kit/__version__.py"
-        }
-      ]
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }

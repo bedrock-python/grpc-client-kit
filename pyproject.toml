@@ -71,7 +71,7 @@ dev = [
 link-mode = "copy"
 
 [tool.hatch.version]
-path = "grpc_client_kit/__version__.py"
+path = "grpc_client_kit/version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["grpc_client_kit"]

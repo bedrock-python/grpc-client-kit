@@ -66,7 +66,7 @@ jobs:
           VERSION="${{ needs.check.outputs.tag }}"
           VERSION="${VERSION#grpc-client-kit-}"
           VERSION="${VERSION#v}"
-          echo "__version__ = \"$VERSION\"  # x-release-please-version" > grpc_client_kit/__version__.py
+          echo "__version__ = \"$VERSION\"" > grpc_client_kit/version.py
 
       - run: uv build
       - run: uv publish

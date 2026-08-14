@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from .__version__ import __version__
 from .balancers import (
     LoadBalancer,
     LoadBalancerConfig,
@@ -70,6 +69,7 @@ from .protocols import (
     TimeoutSettingsProtocol,
 )
 from .utils import metadata_to_dict
+from .version import __version__
 
 if TYPE_CHECKING:
     from .health import HealthChecker
