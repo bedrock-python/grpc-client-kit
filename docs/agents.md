@@ -106,8 +106,9 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-A hand-built chain, which is what you need for per-method budgets, request-budget
-propagation or wait-for-ready:
+A hand-built chain, which is what you need for per-method budgets — request-budget
+propagation and wait-for-ready are reachable from a settings object too, through their
+own optional blocks:
 
 ```python
 from grpc_client_kit import (

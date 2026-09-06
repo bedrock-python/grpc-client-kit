@@ -112,9 +112,11 @@ two layers below read that status:
   reason the deadline bounding it should be one you would actually be willing
   to wait.
 
-There is no settings block for this layer either: like
-[deadline budgets](deadlines.md#adding-the-layer), it is added to a hand-built
-chain via `build_interceptors(wait_for_ready=...)`. It sits below the layers
+A settings object reaches this layer the same way it reaches
+[deadline budgets](deadlines.md#adding-the-layer): an optional `wait_for_ready`
+block with `default`, `per_method` and `require_deadline`, read with `getattr`
+and turned into the interceptor by the factory. A hand-built chain asks for it
+as `build_interceptors(wait_for_ready=...)`. Either way it sits below the layers
 that settle the deadline — it reads that deadline to decide — and above retry,
 where one pass suffices, since each attempt is rebuilt from the details this
 layer already wrote.
