@@ -178,7 +178,7 @@ Everything below is importable from `grpc_client_kit` unless a row says otherwis
 | `factory.create_client(stub_class, target=None, service_name=None, metrics=None, interceptors=None)` | `GrpcClient[T]` | `service_name` defaults to `stub_class.__name__` |
 | `await factory.wait_until_ready(timeout=None)` | `bool` | `True` immediately when no checker is configured |
 | `await factory.close(grace=None)` | `None` | stops the checker; closes the pool only if the factory made it |
-| `factory.health_checker` | `HealthChecker \| None` | property |
+| `factory.health_checker` | `HealthChecker | None` | property |
 | `await factory.circuit_breaker_states()` | `dict[str, dict[str, Any]]` | keyed `"service -> target"` |
 
 Context managers: `async with pool` yields the pool and closes it with no grace on exit;
