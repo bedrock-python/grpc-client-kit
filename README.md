@@ -18,6 +18,15 @@ metrics.
 The core depends only on `grpcio`. Every integration is an opt-in extra, so you
 install exactly what you use.
 
+> [!TIP]
+> **Building this with an AI assistant?** Hand it
+> **[one page](https://bedrock-python.github.io/grpc-client-kit/agents/)** instead of the
+> whole site: the whole public API, who owns a channel and who closes it, what a timeout
+> and a retry actually cover, which batteries are opt-in — plus the mistakes models make
+> with this API and a map of which page to fetch for the rest. Every docs page is also
+> served as raw Markdown at its own URL, and a **Copy page** button at the top of each one
+> hands it straight to a chat window.
+
 ## Why grpc-client-kit
 
 - **Channels are pooled by identity, not by address.** Target, security,
@@ -313,6 +322,7 @@ Full documentation at [bedrock-python.github.io/grpc-client-kit](https://bedrock
 | [Observability](https://bedrock-python.github.io/grpc-client-kit/guide/observability/) | log records, CLIENT spans and the metrics an RPC emits |
 | [Advanced](https://bedrock-python.github.io/grpc-client-kit/guide/advanced/) | interceptors that re-issue calls, target validation, ownership and DI wiring |
 | [API reference](https://bedrock-python.github.io/grpc-client-kit/reference/) | generated from the source |
+| [For AI agents](https://bedrock-python.github.io/grpc-client-kit/agents/) | the whole API surface, the rules that break code when broken and a map of the rest, on one page to hand to a coding assistant |
 
 ## License
 
