@@ -13,7 +13,9 @@ from grpc_client_kit import (
     GrpcClientKitError,
     HealthCheckerNotRunningError,
     NoHealthyTargetsError,
+    protocols,
 )
+from grpc_client_kit.interceptors import circuit_breaker
 
 pytestmark = pytest.mark.unit
 
@@ -74,6 +76,33 @@ def test__public_api__pool_internals__are_not_part_of_the_contract() -> None:
     # Act & Assert
     assert "ChannelWrapper" not in grpc_client_kit.__all__
     assert "chain_token" not in grpc_client_kit.__all__
+
+
+def test__public_api__every_declared_protocol__is_re_exported_at_the_top_level() -> None:
+    """A settings object is written against these, so importing them must not need the submodule."""
+    # Act
+    missing = sorted(set(protocols.__all__) - set(grpc_client_kit.__all__))
+
+    # Assert
+    assert not missing, f"declared in grpc_client_kit.protocols but not exported: {missing}"
+
+
+def test__public_api__protocols_module__declares_every_protocol_the_package_exports() -> None:
+    """A protocol the package exports but the module does not declare is missed by a star import."""
+    # Act
+    exported = {name for name in grpc_client_kit.__all__ if hasattr(protocols, name)}
+    undeclared = sorted(exported - set(protocols.__all__))
+
+    # Assert
+    assert not undeclared, f"exported by the package but absent from protocols.__all__: {undeclared}"
+
+
+def test__public_api__circuit_breaker_internals__are_not_part_of_the_contract() -> None:
+    """``MethodCircuitState`` is the breaker's mutable bookkeeping; callers get status snapshots."""
+    # Act & Assert
+    assert "MethodCircuitState" not in circuit_breaker.__all__
+    assert "MethodCircuitState" not in grpc_client_kit.__all__
+    assert "CircuitBreakerStatus" in circuit_breaker.__all__
 
 
 def test__kit_errors__every_local_failure__is_catchable_as_one_family() -> None:

@@ -78,10 +78,14 @@ grants.
 
 Two things worth knowing before you wire it:
 
-- **There is no settings block for this layer.** A
-  [factory-built chain](configuration.md#settings-objects) carries timeouts,
-  retries and the breaker; a chain that propagates budgets is a hand-built one,
-  handed to `GrpcClient(interceptors=...)`. Not to
+- **A settings object can carry this layer too.** A `deadline_budget` block
+  with `reserve_for_next` is read from
+  [the settings object](configuration.md#settings-objects) with `getattr` — so
+  a factory-built chain gets the layer in
+  [its proper place](#where-it-sits-in-the-chain), with no hand-built chain
+  involved. What settings cannot express is anything finer — per-method caps
+  above all; that is what `build_interceptors` is for, and the chain it returns
+  goes to `GrpcClient(interceptors=...)`. Not to
   `create_client(interceptors=...)`, which places what it is given in the outer
   slot, above the layers this one has to read —
   [why](configuration.md#a-settings-object-end-to-end).

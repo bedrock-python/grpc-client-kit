@@ -73,9 +73,9 @@ No `timeout` block, no timeout interceptor — and therefore no deadline.
 These are **optional** and read through `getattr`, so a minimal settings
 object stays valid: `credentials`, `options`, `compression`
 (`GrpcChannelExtrasProtocol`), plus `sensitive_headers` and
-`metrics_registry` (`GrpcObservabilityExtrasProtocol`). Both protocols live in
-`grpc_client_kit.protocols`, along with `FullGrpcClientSettingsProtocol` for
-settings that carry everything.
+`metrics_registry` (`GrpcObservabilityExtrasProtocol`). Both protocols are
+exported from `grpc_client_kit` like the rest, along with
+`FullGrpcClientSettingsProtocol` for settings that carry everything.
 
 `connectivity` is read the same way — a `ConnectivityConfig` under that name
 [tunes the channels](channels.md#from-a-settings-object), its absence leaves

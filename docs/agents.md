@@ -106,8 +106,9 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-A hand-built chain, which is what you need for per-method budgets, request-budget
-propagation or wait-for-ready:
+A hand-built chain, which is what you need for per-method budgets — request-budget
+propagation and wait-for-ready are reachable from a settings object too, through their
+own optional blocks:
 
 ```python
 from grpc_client_kit import (
@@ -298,7 +299,9 @@ Settings and collaborator protocols, all `runtime_checkable` and all exported:
 `RetrySettingsProtocol`, `CircuitBreakerSettingsProtocol`, `LoadBalancerSettingsProtocol`,
 `HealthCheckerSettingsProtocol`, `ChannelProviderProtocol`, `HealthCheckerProtocol`,
 `HealthStatusCallbackProtocol`, `GrpcClientMetricsProtocol`, `RetryMetricsProtocol`,
-`CircuitBreakerMetricsProtocol`. Also `metadata_to_dict(metadata)` and `__version__`.
+`CircuitBreakerMetricsProtocol`, and the three that describe the optional settings blocks —
+`GrpcChannelExtrasProtocol`, `GrpcObservabilityExtrasProtocol`,
+`FullGrpcClientSettingsProtocol`. Also `metadata_to_dict(metadata)` and `__version__`.
 
 Names that exist but are **not** re-exported at package level — import them from the module
 named beside them:
@@ -312,11 +315,12 @@ named beside them:
 | `AsyncPassiveOutlierInterceptor`, `DEFAULT_QUARANTINE_SECONDS` | `grpc_client_kit.interceptors.outlier` |
 | `validate_target`, `MIN_PORT`, `MAX_PORT` | `grpc_client_kit.validation` |
 | `create_aio_channel` | `grpc_client_kit.utils` |
-| `GrpcChannelExtrasProtocol`, `GrpcObservabilityExtrasProtocol`, `FullGrpcClientSettingsProtocol` | `grpc_client_kit.protocols` |
 
-`ChannelWrapper` and `chain_token` in `grpc_client_kit.channel` are pool internals, left out
-of the public surface on purpose: exporting them would freeze the pool's implementation into
-the compatibility contract. Do not build on them.
+`ChannelWrapper` and `chain_token` in `grpc_client_kit.channel`, and `MethodCircuitState` in
+`grpc_client_kit.interceptors.circuit_breaker`, are internals left out of the public surface on
+purpose: exporting them would freeze those implementations into the compatibility contract. Do
+not build on them — a breaker's state is read through `get_states()`, which returns
+`CircuitBreakerStatus` snapshots.
 
 ### Settings objects
 
@@ -423,7 +427,11 @@ Per-method budgets are the one thing settings cannot express: `timeout` carries 
     both. Native retries *without* kit retries are fully supported.
 19. **Batteries are opt-in, and a missing one is a warning, not an error.**
     `import grpc_client_kit` never reaches for an extra. `HealthChecker` resolves on first
-    attribute access and raises `ImportError` naming `[health]`. Tracing, metrics and the
+    attribute access and raises `ImportError` naming `[health]` — an `ImportError` and not an
+    `AttributeError`, so a broken install says so rather than looking like a name that never
+    existed. The cost is that `hasattr(grpc_client_kit, "HealthChecker")` **propagates that
+    ImportError instead of returning `False`**, and so does `getattr` with a default; probe with
+    `importlib.util.find_spec("grpc_health")` or catch the ImportError. Tracing, metrics and the
     deadline budget layers are left out of the chain, with a log line, when their extra is
     absent — the chain still builds and the calls still run.
 20. **There is no sync API and no thread safety.** Everything here assumes one event loop.

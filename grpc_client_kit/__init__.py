@@ -59,8 +59,11 @@ from .protocols import (
     ChannelProviderProtocol,
     CircuitBreakerMetricsProtocol,
     CircuitBreakerSettingsProtocol,
+    FullGrpcClientSettingsProtocol,
+    GrpcChannelExtrasProtocol,
     GrpcClientMetricsProtocol,
     GrpcClientSettingsProtocol,
+    GrpcObservabilityExtrasProtocol,
     HealthCheckerProtocol,
     HealthCheckerSettingsProtocol,
     HealthStatusCallbackProtocol,
@@ -78,8 +81,10 @@ logger = logging.getLogger(__name__)
 
 # The public surface, deliberately curated. The extension seam (AsyncAroundClientInterceptor,
 # ClientCall, flatten_interceptors) is first-class: it is what custom interceptors are written
-# against. Pool internals (ChannelWrapper, chain_token) are deliberately NOT here — exporting them
-# would freeze the pool's implementation into the compatibility contract.
+# against. Every protocol in `protocols.__all__` is re-exported here, so a settings object can be
+# written against the package alone. Internals — the pool's ChannelWrapper and chain_token, the
+# circuit breaker's MethodCircuitState — are deliberately NOT here: exporting them would freeze
+# those implementations into the compatibility contract.
 __all__ = [
     "AsyncAroundClientInterceptor",
     "AsyncCircuitBreakerInterceptor",
@@ -104,12 +109,15 @@ __all__ = [
     "DeadlineBudgetConfig",
     "DeadlineBudgetExhaustedError",
     "DeadlineBudgetProtocol",
+    "FullGrpcClientSettingsProtocol",
+    "GrpcChannelExtrasProtocol",
     "GrpcClient",
     "GrpcClientConfig",
     "GrpcClientFactory",
     "GrpcClientKitError",
     "GrpcClientMetricsProtocol",
     "GrpcClientSettingsProtocol",
+    "GrpcObservabilityExtrasProtocol",
     "HealthChecker",
     "HealthCheckerNotRunningError",
     "HealthCheckerProtocol",
@@ -148,6 +156,12 @@ def __getattr__(name: str) -> Any:
     ``HealthChecker`` needs the [health] extra, so importing this package must not import it: a
     module-level import would make ``import grpc_client_kit`` fail on a bare install.
 
+    A missing extra raises ``ImportError``, not ``AttributeError``, so that a broken install
+    says so instead of looking like a name that never existed. The cost is that ``hasattr`` and
+    ``getattr`` with a default do not swallow it — they propagate the ImportError — so probe for
+    the extra with ``importlib.util.find_spec("grpc_health")`` or catch the ImportError, not
+    with ``hasattr(grpc_client_kit, "HealthChecker")``.
+
     Args:
         name: The attribute being looked up.
 
@@ -156,7 +170,8 @@ def __getattr__(name: str) -> Any:
 
     Raises:
         AttributeError: If the package has no such attribute.
-        ImportError: If the attribute needs an extra that is not installed.
+        ImportError: If the attribute needs an extra that is not installed. Deliberately not an
+            AttributeError: see above.
     """
     if name == "HealthChecker":
         from .factory import _load_health_checker  # noqa: PLC0415 - lazy: needs the [health] extra

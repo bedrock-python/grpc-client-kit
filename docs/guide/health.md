@@ -20,14 +20,24 @@ pool = ChannelPool(health_checker=checker)  # pooled channels get health flags t
 await checker.stop()  # closes the probe channels
 ```
 
-Each probe asks for the **overall** server status — the empty service name of
-the Health v1 protocol — rather than a per-service one, so a target is healthy
-when the process behind it says it is serving at all.
+Each probe asks for the service named by `service`, which defaults to the
+empty name of the Health v1 protocol — the **overall** server status, so a
+target is healthy when the process behind it says it is serving at all. Pass
+`service="users.v1.Users"` to ask about one service instead, which is what the
+standard protocol is for when a process serves several.
 
 `HealthChecker` is resolved lazily, so `import grpc_client_kit` works on a
 bare install; touching `grpc_client_kit.HealthChecker` without the extra
-raises an `ImportError` naming it. `HealthCheckerNotRunningError` lives in
-`grpc_client_kit.health`, which likewise needs the extra.
+raises an `ImportError` naming it. It is an `ImportError` rather than an
+`AttributeError` on purpose — a missing extra is an install problem and should
+say so — which does mean `hasattr(grpc_client_kit, "HealthChecker")` raises it
+rather than answering `False`, and `getattr` with a default does not swallow it
+either. Probe for the extra with `importlib.util.find_spec("grpc_health")`, or
+catch the `ImportError`.
+
+`HealthCheckerNotRunningError` is a top-level export from `grpc_client_kit`
+and needs no extra at all: the caller who meets it is a caller of a balancer,
+and a balancer works on a bare install.
 
 ## An unchecked target is not a healthy target
 
@@ -90,14 +100,19 @@ Three reasons, each sufficient on its own:
 | :--- | :--- | :--- |
 | `check_interval` | `30.0` | Seconds between checks of a healthy target |
 | `timeout` | `5.0` | Budget for one probe RPC |
-| `max_backoff` | `300.0` | Cap on the backoff of a failing target |
+| `service` | `""` | Service to probe; the empty name asks about the server as a whole |
+| `max_backoff` | `300.0` | Cap on the backoff of a failing target; the checker's own default, not read from settings |
 
 The factory builds a checker only when the settings carry both a
-`health_checker` block **and** `targets`, and passes it `check_interval`,
-`timeout`, `insecure` and `credentials`. It does **not** forward `options` or
-`compression`: if your application channels need specific channel options for
-the probes to negotiate HTTP/2 identically, construct `HealthChecker`
-yourself and hand it to the pool and the balancer.
+`health_checker` block **and** `targets`. It passes `check_interval` and
+`timeout` from that block, the block's optional `service`, and `insecure`,
+`credentials`, `options` and `compression` from the settings themselves — the
+last two so the probes negotiate HTTP/2 exactly as the application channels do,
+rather than through a differently configured connection.
+
+Anything the settings cannot express — `on_status_change`, `max_backoff`,
+`fail_fast_callback` — means constructing `HealthChecker` yourself and handing
+it to the pool and the balancer.
 
 Entering the factory's `async with` starts the checker; leaving it stops the
 checker and closes its probe channels. A factory used without that block warns

@@ -434,6 +434,7 @@ class FullGrpcClientSettingsProtocol(
 __all__ = [
     "ChannelPoolSettingsProtocol",
     "ChannelProviderProtocol",
+    "CircuitBreakerMetricsProtocol",
     "CircuitBreakerSettingsProtocol",
     "FullGrpcClientSettingsProtocol",
     "GrpcChannelExtrasProtocol",
@@ -444,6 +445,7 @@ __all__ = [
     "HealthCheckerSettingsProtocol",
     "HealthStatusCallbackProtocol",
     "LoadBalancerSettingsProtocol",
+    "RetryMetricsProtocol",
     "RetrySettingsProtocol",
     "TimeoutSettingsProtocol",
 ]
