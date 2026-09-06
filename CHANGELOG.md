@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/bedrock-python/grpc-client-kit/compare/grpc-client-kit-v0.1.0...grpc-client-kit-v0.1.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* missing root exports, and three guides that described the wrong behaviour ([#17](https://github.com/bedrock-python/grpc-client-kit/issues/17)) ([b43d8cb](https://github.com/bedrock-python/grpc-client-kit/commit/b43d8cb390ebf3fa86a6049312e65de8baff8705))
+
 ## 0.1.0 (2026-08-13)
 
 Initial release of grpc-client-kit.
