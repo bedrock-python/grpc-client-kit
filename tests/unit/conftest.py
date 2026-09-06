@@ -53,6 +53,16 @@ BARE_INSTALL_PROBE = textwrap.dedent(
         assert "grpc-client-kit[health]" in str(exc), str(exc)
     else:
         raise AssertionError("HealthChecker must not resolve without the extra")
+
+    # An ImportError rather than an AttributeError, on purpose: a missing extra is an install
+    # problem and must say so. hasattr() therefore propagates it instead of answering False,
+    # which is why the extra is probed for by name and not through the attribute.
+    try:
+        hasattr(grpc_client_kit, "HealthChecker")
+    except ImportError as exc:
+        assert "grpc-client-kit[health]" in str(exc), str(exc)
+    else:
+        raise AssertionError("hasattr must not swallow the missing extra")
     """
 )
 

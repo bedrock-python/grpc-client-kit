@@ -426,7 +426,11 @@ Per-method budgets are the one thing settings cannot express: `timeout` carries 
     both. Native retries *without* kit retries are fully supported.
 19. **Batteries are opt-in, and a missing one is a warning, not an error.**
     `import grpc_client_kit` never reaches for an extra. `HealthChecker` resolves on first
-    attribute access and raises `ImportError` naming `[health]`. Tracing, metrics and the
+    attribute access and raises `ImportError` naming `[health]` — an `ImportError` and not an
+    `AttributeError`, so a broken install says so rather than looking like a name that never
+    existed. The cost is that `hasattr(grpc_client_kit, "HealthChecker")` **propagates that
+    ImportError instead of returning `False`**, and so does `getattr` with a default; probe with
+    `importlib.util.find_spec("grpc_health")` or catch the ImportError. Tracing, metrics and the
     deadline budget layers are left out of the chain, with a log line, when their extra is
     absent — the chain still builds and the calls still run.
 20. **There is no sync API and no thread safety.** Everything here assumes one event loop.
