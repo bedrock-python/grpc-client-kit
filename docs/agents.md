@@ -298,7 +298,9 @@ Settings and collaborator protocols, all `runtime_checkable` and all exported:
 `RetrySettingsProtocol`, `CircuitBreakerSettingsProtocol`, `LoadBalancerSettingsProtocol`,
 `HealthCheckerSettingsProtocol`, `ChannelProviderProtocol`, `HealthCheckerProtocol`,
 `HealthStatusCallbackProtocol`, `GrpcClientMetricsProtocol`, `RetryMetricsProtocol`,
-`CircuitBreakerMetricsProtocol`. Also `metadata_to_dict(metadata)` and `__version__`.
+`CircuitBreakerMetricsProtocol`, and the three that describe the optional settings blocks —
+`GrpcChannelExtrasProtocol`, `GrpcObservabilityExtrasProtocol`,
+`FullGrpcClientSettingsProtocol`. Also `metadata_to_dict(metadata)` and `__version__`.
 
 Names that exist but are **not** re-exported at package level — import them from the module
 named beside them:
@@ -312,11 +314,12 @@ named beside them:
 | `AsyncPassiveOutlierInterceptor`, `DEFAULT_QUARANTINE_SECONDS` | `grpc_client_kit.interceptors.outlier` |
 | `validate_target`, `MIN_PORT`, `MAX_PORT` | `grpc_client_kit.validation` |
 | `create_aio_channel` | `grpc_client_kit.utils` |
-| `GrpcChannelExtrasProtocol`, `GrpcObservabilityExtrasProtocol`, `FullGrpcClientSettingsProtocol` | `grpc_client_kit.protocols` |
 
-`ChannelWrapper` and `chain_token` in `grpc_client_kit.channel` are pool internals, left out
-of the public surface on purpose: exporting them would freeze the pool's implementation into
-the compatibility contract. Do not build on them.
+`ChannelWrapper` and `chain_token` in `grpc_client_kit.channel`, and `MethodCircuitState` in
+`grpc_client_kit.interceptors.circuit_breaker`, are internals left out of the public surface on
+purpose: exporting them would freeze those implementations into the compatibility contract. Do
+not build on them — a breaker's state is read through `get_states()`, which returns
+`CircuitBreakerStatus` snapshots.
 
 ### Settings objects
 

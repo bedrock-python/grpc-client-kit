@@ -399,10 +399,12 @@ class AsyncCircuitBreakerInterceptor(AsyncAroundClientInterceptor):
         )
 
 
+# `MethodCircuitState` is deliberately absent: it is the breaker's mutable bookkeeping, never a
+# type a caller receives — `get_states()` hands out `CircuitBreakerStatus` snapshots — and
+# declaring it public would freeze this implementation into the compatibility contract.
 __all__ = [
     "AsyncCircuitBreakerInterceptor",
     "CircuitBreakerOpenError",
     "CircuitBreakerStatus",
     "CircuitState",
-    "MethodCircuitState",
 ]

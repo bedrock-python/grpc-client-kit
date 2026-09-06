@@ -59,8 +59,11 @@ from .protocols import (
     ChannelProviderProtocol,
     CircuitBreakerMetricsProtocol,
     CircuitBreakerSettingsProtocol,
+    FullGrpcClientSettingsProtocol,
+    GrpcChannelExtrasProtocol,
     GrpcClientMetricsProtocol,
     GrpcClientSettingsProtocol,
+    GrpcObservabilityExtrasProtocol,
     HealthCheckerProtocol,
     HealthCheckerSettingsProtocol,
     HealthStatusCallbackProtocol,
@@ -78,8 +81,10 @@ logger = logging.getLogger(__name__)
 
 # The public surface, deliberately curated. The extension seam (AsyncAroundClientInterceptor,
 # ClientCall, flatten_interceptors) is first-class: it is what custom interceptors are written
-# against. Pool internals (ChannelWrapper, chain_token) are deliberately NOT here — exporting them
-# would freeze the pool's implementation into the compatibility contract.
+# against. Every protocol in `protocols.__all__` is re-exported here, so a settings object can be
+# written against the package alone. Internals — the pool's ChannelWrapper and chain_token, the
+# circuit breaker's MethodCircuitState — are deliberately NOT here: exporting them would freeze
+# those implementations into the compatibility contract.
 __all__ = [
     "AsyncAroundClientInterceptor",
     "AsyncCircuitBreakerInterceptor",
@@ -104,12 +109,15 @@ __all__ = [
     "DeadlineBudgetConfig",
     "DeadlineBudgetExhaustedError",
     "DeadlineBudgetProtocol",
+    "FullGrpcClientSettingsProtocol",
+    "GrpcChannelExtrasProtocol",
     "GrpcClient",
     "GrpcClientConfig",
     "GrpcClientFactory",
     "GrpcClientKitError",
     "GrpcClientMetricsProtocol",
     "GrpcClientSettingsProtocol",
+    "GrpcObservabilityExtrasProtocol",
     "HealthChecker",
     "HealthCheckerNotRunningError",
     "HealthCheckerProtocol",
