@@ -52,6 +52,20 @@ Breaking changes: add `!` after the type (`feat!:`) or include a `BREAKING CHANG
 4. Run `make check && make test-unit` locally
 5. Open a PR against `master`
 
+## The agents page
+
+`docs/agents.md` is the whole library on one page, written for a coding assistant: the
+public API, the rules that break code when they are broken, the mistakes models make, and a
+map of which page to fetch for the rest. People hand it to an assistant instead of the site,
+which is what makes a stale one worse than none — it teaches a model an API that no longer
+exists.
+
+It is part of the public API, so it changes in the same pull request the API does: a name
+added, renamed or removed, a changed default or signature, a new rule a caller has to obey.
+A new docs page means a new row in the documentation map. The review check is mechanical —
+if the diff changes the public surface and `docs/agents.md` is untouched, the pull request
+is not finished.
+
 ## Releasing (maintainers only)
 
 Releases are fully automated via [Release Please](https://github.com/googleapis/release-please).
