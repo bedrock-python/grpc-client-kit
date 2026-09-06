@@ -69,4 +69,6 @@ jobs:
           echo "__version__ = \"$VERSION\"  # x-release-please-version" > grpc_client_kit/__version__.py
 
       - run: uv build
-      - run: uv publish
+      # --check-url: a run repeated after a failure skips what is already on the
+      # index instead of failing on it.
+      - run: uv publish --check-url https://pypi.org/simple/grpc-client-kit/
