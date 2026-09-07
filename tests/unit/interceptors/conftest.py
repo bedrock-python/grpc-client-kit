@@ -37,11 +37,15 @@ from grpc_client_kit.interceptors.circuit_breaker import (
 from grpc_client_kit.interceptors.metrics import AsyncClientMetricsInterceptor
 from tests.helpers import (
     METHOD,
+    REQUEST_ID,
     RPC_KINDS,
+    STREAMING_RESPONSE,
+    FakeStreamCall,
     FakeUnaryCall,
     Wire,
     adapter_for,
     await_result,
+    collect,
     make_call_details,
     make_rpc_error,
 )
@@ -97,6 +101,56 @@ async def run_call(
     finally:
         # The assertions that follow must see the completed teardown of deferred outcomes.
         await settle()
+
+
+async def drive_call(
+    interceptor: AsyncClientInterceptor,
+    wire: Continuation,
+    rpc_type: str = "unary_unary",
+) -> Any:
+    """Drive one call of any kind to its end, with the chain in a task of its own.
+
+    That task is the point. `grpc.aio` runs an interceptor chain in a task it creates and hands the
+    caller back a `Call` or an iterator to consume in whichever task the caller likes, so the setup
+    of an `around_call` and its teardown routinely happen on opposite sides of a task boundary.
+    Driving both halves from one task hides everything that only goes wrong across that boundary.
+
+    Args:
+        interceptor: The layer under test.
+        wire: The continuation the call is issued through.
+        rpc_type: Which of the four kinds to issue.
+
+    Returns:
+        What the caller received: the response, or a response stream drained into a list.
+    """
+    started = await asyncio.create_task(start_call(interceptor, wire, rpc_type))
+    try:
+        if rpc_type in STREAMING_RESPONSE:
+            return await collect(started)
+        return await await_result(started)
+    finally:
+        # The assertions that follow must see the completed teardown of deferred outcomes.
+        await settle()
+
+
+def wire_for(rpc_type: str) -> Wire:
+    """A continuation answering with the shape of `Call` that RPC kind's response side has."""
+    return Wire(FakeStreamCall("a", "b") if rpc_type in STREAMING_RESPONSE else FakeUnaryCall("ok"))
+
+
+def response_for(rpc_type: str) -> Any:
+    """What a caller receives from `wire_for` when the call succeeds."""
+    return ["a", "b"] if rpc_type in STREAMING_RESPONSE else "ok"
+
+
+def context_reading_wire(wire: Continuation, seen: list[str | None]) -> Continuation:
+    """A continuation noting what `REQUEST_ID` held below the layer, at the moment it issued."""
+
+    async def _read(details: Any, request: Any) -> Any:
+        seen.append(REQUEST_ID.get())
+        return await wire(details, request)
+
+    return _read
 
 
 def nested_wire(

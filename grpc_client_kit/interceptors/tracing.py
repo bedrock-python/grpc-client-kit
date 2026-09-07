@@ -113,11 +113,15 @@ class AsyncClientTracingInterceptor(AsyncClientInterceptor):
 
     Note:
         This layer implements `base.AsyncClientInterceptor.intercept` rather than the simpler
-        ``around_call`` seam, because the span must be made current only while the RPC is being
-        created. ``around_call`` resumes when the *whole* call is over, and for a streaming response
-        that happens in whichever task drains the stream, while gRPC runs the interceptor chain in a
-        task of its own: detaching the OpenTelemetry context there fails ("Failed to detach
-        context") and leaves the client span current in the task that started the call.
+        ``around_call`` seam. It once had no choice: the teardown of an ``around_call`` resumed in
+        whichever task drained the stream, and detaching the OpenTelemetry context there failed
+        ("Failed to detach context"), leaving the client span current in the task that started the
+        call. `base._AroundScope` steps both sides of the ``yield`` in one context now, so an
+        ``attach`` / ``detach`` pair across it is supported and that reason is gone. What keeps
+        this layer on `intercept` is cost: with ``opentelemetry-api`` installed and no SDK
+        configured — the default state of the ``tracing`` extra — every span is non-recording and
+        this interceptor does nothing at all, while an around scope would be opened for every call
+        regardless, and on a streaming call that is a task per RPC.
 
     Note:
         Without the ``tracing`` extra (``opentelemetry-api``) the interceptor is a documented

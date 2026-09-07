@@ -7,6 +7,9 @@ object without raising, and the outcome only surfaces when that Call is awaited 
 
 from __future__ import annotations
 
+import logging
+
+import grpc
 import grpc.aio
 import pytest
 
@@ -14,10 +17,14 @@ from grpc_client_kit.interceptors.base import flatten_interceptors, logical_inte
 from grpc_client_kit.interceptors.circuit_breaker import CircuitBreakerOpenError
 from grpc_client_kit.interceptors.retry import AsyncRetryInterceptor
 from tests.helpers import (
+    AROUND_LOGGER,
     METHOD,
+    REQUEST_ID,
     RPC_KINDS,
     FakeStreamCall,
     FakeUnaryCall,
+    RaisingTeardown,
+    TokenAcrossYield,
     Wire,
     collect,
     make_call_details,
@@ -25,7 +32,17 @@ from tests.helpers import (
     refusing_wire,
 )
 
-from .conftest import OldStyleInterceptor, Probe, Recorder, run_call, start_call
+from .conftest import (
+    OldStyleInterceptor,
+    Probe,
+    Recorder,
+    context_reading_wire,
+    drive_call,
+    response_for,
+    run_call,
+    start_call,
+    wire_for,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -208,6 +225,71 @@ async def test__around_call__stream_refused_by_an_inner_layer__still_runs_the_te
         ("failed", grpc.StatusCode.UNAVAILABLE),
         "closed",
     ]
+
+
+# --------------------------------------------------------------------------------------------
+# What the two sides of the yield are promised: one context, and no say in the outcome.
+# --------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("rpc_type", list(RPC_KINDS))
+async def test__around_call__contextvar_token__is_reset_in_the_context_the_setup_ran_in(rpc_type: str) -> None:
+    """Scoping a value to one call is the shortest thing this seam is for, and it has to work.
+
+    `contextvars` compares contexts by identity, so a teardown stepped from another task than the
+    setup cannot reset what the setup set — which is where three of the four kinds finish.
+    """
+    # Arrange
+    interceptor = TokenAcrossYield()
+    seen: list[str | None] = []
+
+    # Act
+    received = await drive_call(interceptor, context_reading_wire(wire_for(rpc_type), seen), rpc_type)
+
+    # Assert
+    assert interceptor.reset_error is None, "the teardown ran in a different context than the setup"
+    assert seen == ["req-42"], "what the setup set was invisible to the layers below it"
+    assert received == response_for(rpc_type)
+    assert REQUEST_ID.get() is None, "the value escaped the call and reached the caller's context"
+
+
+@pytest.mark.parametrize("rpc_type", list(RPC_KINDS))
+async def test__around_call__teardown_raises__the_response_still_reaches_the_caller(
+    rpc_type: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An interceptor is observability: a metrics push that fails must not take the response with it."""
+    # Arrange
+    caplog.set_level(logging.ERROR, logger=AROUND_LOGGER)
+    interceptor = RaisingTeardown()
+
+    # Act
+    received = await drive_call(interceptor, wire_for(rpc_type), rpc_type)
+
+    # Assert
+    assert received == response_for(rpc_type)
+    assert interceptor.teardowns == 1
+    reported = [record for record in caplog.records if record.name == AROUND_LOGGER]
+    assert [record.getMessage() for record in reported] == [f"around_call teardown failed for {METHOD}"]
+    assert reported[0].exc_info is not None, "the failure was reported without the traceback that explains it"
+    assert reported[0].exc_info[0] is RuntimeError
+
+
+async def test__around_call__teardown_raises_on_a_failed_call__the_server_status_survives(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A status is an outcome too: the teardown must not replace what the server answered either."""
+    # Arrange
+    caplog.set_level(logging.ERROR, logger=AROUND_LOGGER)
+    wire = Wire(FakeUnaryCall(error=make_rpc_error(grpc.StatusCode.PERMISSION_DENIED)))
+
+    # Act
+    with pytest.raises(grpc.aio.AioRpcError) as raised:
+        await drive_call(RaisingTeardown(), wire)
+
+    # Assert
+    assert raised.value.code() == grpc.StatusCode.PERMISSION_DENIED
+    assert [record.name for record in caplog.records] == [AROUND_LOGGER]
 
 
 # --------------------------------------------------------------------------------------------

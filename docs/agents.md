@@ -235,15 +235,15 @@ Layer classes, all exported and all usable on their own:
 
 | Name | Use |
 |---|---|
-| `AsyncAroundClientInterceptor` | subclass and write one `async def around_call(self, call) -> AsyncIterator[None]` that yields exactly once — the whole RPC happens at the `yield`, a response stream to its last item included |
+| `AsyncAroundClientInterceptor` | subclass and write one `async def around_call(self, call) -> AsyncIterator[None]` that yields exactly once — the whole RPC happens at the `yield`, a response stream to its last item included. Both sides of the `yield` share one `contextvars.Context`; nothing raised after it reaches the caller |
 | `AsyncClientInterceptor` | subclass and implement `async def intercept(self, call)` when the call must be issued by hand, re-issued, or not issued at all |
 | `ClientCall` | `method` (already decoded `str`), `rpc_type`, `details`, `request`, `request_streaming`, `response_streaming`, `response`, `underlying_call`, `await invoke_unary()`, `await invoke_stream()` |
 | `flatten_interceptors(interceptors)` | expands a mixed chain into what a channel accepts |
 | `logical_interceptor(entry)` | an adapter back to its interceptor; anything else unchanged |
 
 Rewrite the call before the `yield` with `call.details = call.details._replace(timeout=...)`;
-raise before the `yield` to refuse the call outright. Swallowing an exception after it is not
-supported.
+raise before the `yield` to refuse the call outright. After the `yield` the outcome is already
+decided: swallowing an exception is not supported, and neither is raising one — see rule 14.
 
 ### Balancing
 
@@ -403,29 +403,37 @@ Per-method budgets are the one thing settings cannot express: `timeout` carries 
     interceptor you write against gRPC's own `intercept_*` methods that inherits all four
     base classes is registered for **unary-unary only**, silently — the channel files each
     entry into the first list it matches.
-14. **`create_client(interceptors=...)` puts your layers in the outer slot**, above logging,
+14. **`around_call` cannot change a call's outcome after the `yield`, and both sides of it
+    share one context.** Whatever the teardown raises — a metrics push to a collector that
+    went away, a `ContextVar.reset` that was refused — is logged at ERROR against the method
+    and dropped, identically for all four RPC kinds; only cancellation still propagates. And
+    a token minted before the `yield` may be reset after it on every kind, because the kit
+    pins a `contextvars.Context` per call for the three whose teardown finishes in another
+    task. That costs an `asyncio.Task` or two per call, per layer; unary-unary pins nothing
+    and pays nothing.
+15. **`create_client(interceptors=...)` puts your layers in the outer slot**, above logging,
     tracing, metrics and the timeout. That is right for metadata injection and wrong for
     anything that has to read or reshape the deadline; those belong in a hand-built chain
     given to `GrpcClient(interceptors=...)`.
-15. **`interceptors` and `interceptor_factory` are mutually exclusive, and so are `balancer`
+16. **`interceptors` and `interceptor_factory` are mutually exclusive, and so are `balancer`
     and `config.target`.** Both pairs raise `ValueError` at construction rather than picking a
     winner at run time. A shared `interceptors` list also means one circuit breaker shared
     across every target of that client; the factory always passes a factory instead.
-16. **An unchecked target is not a healthy target.** Every target reads unhealthy until the
+17. **An unchecked target is not a healthy target.** Every target reads unhealthy until the
     first health pass lands, so enter the factory's `async with` (or `await
     checker.wait_until_ready()`) before the first RPC, or every fresh pod fails its first
     call with `NoHealthyTargetsError`. A checker that was never started raises
     `HealthCheckerNotRunningError` from `is_healthy`, and balancers gather health with
     `return_exceptions=True`, so that mistake otherwise looks exactly like a cluster that is
     entirely down.
-17. **A port is always required.** Targets are validated before a channel exists, more
+18. **A port is always required.** Targets are validated before a channel exists, more
     strictly than gRPC — which silently falls back to 443 for a portless target. `[::1]:50051`
     must be bracketed; `http://` is rejected by name.
-18. **Never stack kit retries on a native `retryPolicy`.** Service-config retries run inside
+19. **Never stack kit retries on a native `retryPolicy`.** Service-config retries run inside
     the channel, below every interceptor, so the two multiply: 3 × 3 = 9 requests reach the
     server, invisibly to the kit's logs and metrics. `GrpcClient` warns once when it sees
     both. Native retries *without* kit retries are fully supported.
-19. **Batteries are opt-in, and a missing one is a warning, not an error.**
+20. **Batteries are opt-in, and a missing one is a warning, not an error.**
     `import grpc_client_kit` never reaches for an extra. `HealthChecker` resolves on first
     attribute access and raises `ImportError` naming `[health]` — an `ImportError` and not an
     `AttributeError`, so a broken install says so rather than looking like a name that never
@@ -434,7 +442,7 @@ Per-method budgets are the one thing settings cannot express: `timeout` carries 
     `importlib.util.find_spec("grpc_health")` or catch the ImportError. Tracing, metrics and the
     deadline budget layers are left out of the chain, with a log line, when their extra is
     absent — the chain still builds and the calls still run.
-20. **There is no sync API and no thread safety.** Everything here assumes one event loop.
+21. **There is no sync API and no thread safety.** Everything here assumes one event loop.
 
 ## Common mistakes
 
