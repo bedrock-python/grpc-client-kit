@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/bedrock-python/grpc-client-kit/compare/grpc-client-kit-v0.1.1...grpc-client-kit-v0.1.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* an around_call teardown cannot change a call's outcome, and shares its setup's context ([#20](https://github.com/bedrock-python/grpc-client-kit/issues/20)) ([27b5c83](https://github.com/bedrock-python/grpc-client-kit/commit/27b5c8348e7430169d86059cbde36218b206d0f1))
+
 ## [0.1.1](https://github.com/bedrock-python/grpc-client-kit/compare/grpc-client-kit-v0.1.0...grpc-client-kit-v0.1.1) (2026-09-06)
 
 
