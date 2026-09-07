@@ -156,14 +156,52 @@ class TimingInterceptor(AsyncAroundClientInterceptor):
   to refuse the call outright: nothing is sent.
 - **At the `yield`** the call runs, start to finish. A failure arrives as
   `grpc.aio.AioRpcError`, one halfway through a response stream included.
-- **After it** — `except`, `else`, `finally` — the outcome is known.
-  Swallowing the exception is not supported: there is no response to put in
-  its place.
+- **After it** — `except`, `else`, `finally` — the outcome is known and
+  nothing done here can change it. Swallowing the exception is not supported:
+  there is no response to put in its place. Raising is not either: whatever
+  the teardown raises is logged at `ERROR` against the method and dropped, so
+  a metrics push to a collector that has gone away cannot take a response the
+  server already sent with it.
 
 `call` carries what a layer needs: `method` (already decoded to `str`),
 `rpc_type`, `request_streaming` / `response_streaming`, the mutable `details`,
 `response` once a unary one has arrived, and `underlying_call` for the
 `grpc.aio.Call` itself.
+
+### Scoping a value to one call
+
+Both sides of the `yield` run in one `contextvars.Context`, so the pair that
+scopes something for the length of a call is written the obvious way and works
+on all four RPC kinds:
+
+```python
+from contextvars import ContextVar
+
+REQUEST_ID: ContextVar[str | None] = ContextVar("request_id", default=None)
+
+
+class RequestId(AsyncAroundClientInterceptor):
+    """Tag every outgoing call with an id the layers below it can read."""
+
+    async def around_call(self, call: ClientCall) -> AsyncIterator[None]:
+        token = REQUEST_ID.set(new_request_id())
+        try:
+            yield
+        finally:
+            REQUEST_ID.reset(token)
+```
+
+What the setup sets is visible to every layer below and to the RPC itself. It
+is not visible to your own calling code: `grpc.aio` runs a chain in a task of
+its own, so a chain has never been able to write into the caller's context.
+OpenTelemetry's `attach` and `detach` work across the `yield` for the same
+reason the token pair does.
+
+The kit pays for that by pinning a context per call on the three kinds whose
+teardown finishes somewhere else — after the last item of a response stream,
+or once a streaming request's outcome arrives — which costs an `asyncio.Task`
+or two per call, per layer. A unary-unary call pins nothing and pays nothing:
+its setup, RPC and teardown are one coroutine already.
 
 ## When `intercept` is the right seam
 

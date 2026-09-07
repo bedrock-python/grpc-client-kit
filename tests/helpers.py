@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Callable, Generator
+from contextvars import ContextVar
 from typing import Any, NamedTuple
 from unittest.mock import AsyncMock, MagicMock
 
@@ -23,6 +24,7 @@ import grpc.aio
 
 from grpc_client_kit.channel import ChannelPool
 from grpc_client_kit.deadline import DeadlineExceededError
+from grpc_client_kit.interceptors.base import AsyncAroundClientInterceptor, ClientCall
 
 # The method path calls are issued against unless a test needs to tell two methods apart.
 METHOD = "/pkg.Service/Method"
@@ -327,6 +329,63 @@ async def requests(*items: Any) -> AsyncIterator[Any]:
     """A streaming request, as gRPC delivers one to a stream-request interceptor."""
     for item in items:
         yield item
+
+
+# --------------------------------------------------------------------------------------------
+# Around-call layers, for the two suites that measure the seam itself.
+# --------------------------------------------------------------------------------------------
+
+# The logger the seam reports a teardown that failed on.
+AROUND_LOGGER = "grpc_client_kit.interceptors.base"
+
+# A value an `around_call` scopes to one call, as a request id or a correlation id would be.
+REQUEST_ID: ContextVar[str | None] = ContextVar("request_id", default=None)
+
+
+class TokenAcrossYield(AsyncAroundClientInterceptor):
+    """Scopes a value to one call: the shortest useful thing this seam can be written for.
+
+    Attributes:
+        teardowns: How many calls have reached the code after the ``yield``.
+        reset_error: Whatever resetting the token raised, or None when the reset was allowed.
+    """
+
+    def __init__(self) -> None:
+        """Start with nothing torn down and no failure."""
+        self.teardowns = 0
+        self.reset_error: BaseException | None = None
+
+    async def around_call(self, call: ClientCall) -> AsyncIterator[None]:
+        token = REQUEST_ID.set("req-42")
+        try:
+            yield
+        finally:
+            try:
+                REQUEST_ID.reset(token)
+            except ValueError as error:
+                # Kept rather than raised: a refused reset reaches the caller differently on every
+                # RPC kind, and what these tests assert is that the reset itself was legal.
+                self.reset_error = error
+            self.teardowns += 1
+
+
+class RaisingTeardown(AsyncAroundClientInterceptor):
+    """A layer whose teardown fails, as a metrics push to a collector that has gone away would.
+
+    Attributes:
+        teardowns: How many calls have reached the code after the ``yield``.
+    """
+
+    def __init__(self) -> None:
+        """Start with nothing torn down."""
+        self.teardowns = 0
+
+    async def around_call(self, call: ClientCall) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            self.teardowns += 1
+            raise RuntimeError("the teardown itself failed")
 
 
 # --------------------------------------------------------------------------------------------

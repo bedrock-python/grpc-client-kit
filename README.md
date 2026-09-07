@@ -222,9 +222,13 @@ class FailureCounter(AsyncAroundClientInterceptor):
 
 Code before the `yield` runs before the RPC exists, so that is where call
 details are rewritten and where raising refuses a call outright. Code after it
-runs once the call is over, whichever of the four kinds it was. Layers that
-re-issue a call — retries — subclass `AsyncClientInterceptor` and issue it
-themselves; see the
+runs once the call is over, whichever of the four kinds it was, and cannot
+change how it ended: what the teardown raises is logged and dropped. Both sides
+of the `yield` run in one `contextvars.Context`, so `token = VAR.set(...)`
+before it and `VAR.reset(token)` after it is a supported way to scope a request
+id — or an OpenTelemetry context — to a single call. Layers that re-issue a
+call — retries — subclass `AsyncClientInterceptor` and issue it themselves; see
+the
 [advanced guide](https://bedrock-python.github.io/grpc-client-kit/guide/advanced/).
 
 **`INTERNAL` is not retryable by default.** `DEFAULT_RETRYABLE_CODES` holds
