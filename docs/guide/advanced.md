@@ -52,34 +52,9 @@ half-registering it.
 
 ## Dependency injection
 
-The pool is application-scoped, the factory usually too, and clients are cheap
-enough to be request-scoped:
-
-```python
-from collections.abc import AsyncIterable
-
-from dishka import Provider, Scope, provide
-
-from grpc_client_kit import ChannelPool, GrpcClient, GrpcClientFactory
-
-
-class GrpcProvider(Provider):
-    @provide(scope=Scope.APP)
-    async def get_pool(self) -> AsyncIterable[ChannelPool]:
-        async with ChannelPool(max_channels_per_target=4) as pool:
-            yield pool
-
-    @provide(scope=Scope.APP)
-    async def get_factory(self, pool: ChannelPool, settings: UpstreamSettings) -> AsyncIterable[GrpcClientFactory]:
-        async with GrpcClientFactory(settings=settings, pool=pool) as factory:
-            yield factory
-
-    @provide(scope=Scope.REQUEST)
-    def get_user_client(self, factory: GrpcClientFactory) -> GrpcClient[UserStub]:
-        return factory.create_client(UserStub, target="user-service:50051")
-```
-
-Both `async with` blocks matter: the pool's closes the channels, the factory's
-starts and stops [health checking](health.md). Nothing here is
-Dishka-specific — any container that can express "one instance per process,
-closed at shutdown" works the same way.
+The pool is application-scoped, the factory too, and clients are cheap enough
+to be request-scoped. `grpc_client_kit.dishka` (the `dishka` extra) ships the
+providers that own that lifecycle — resolve `GrpcClientFactory`, and closing
+the container closes the pool — with one Dishka component per upstream when a
+service has several. See [Dependency injection](dependency-injection.md),
+which also spells the two `async with` blocks out for any other container.

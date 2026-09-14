@@ -26,6 +26,7 @@ nav = [
         { "Native gRPC or the kit?" = "guide/native-vs-kit.md" },
         { "Health checking" = "guide/health.md" },
         { "Observability" = "guide/observability.md" },
+        { "Dependency injection" = "guide/dependency-injection.md" },
         { "Advanced" = "guide/advanced.md" },
     ] },
     { "API Reference" = "reference/index.md" },

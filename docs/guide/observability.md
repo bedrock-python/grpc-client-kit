@@ -169,6 +169,8 @@ prefix and hands it back on every later call; it raises `ValueError` when the
 same prefix is asked for with different `buckets`, since silently keeping the
 old ones would record latencies into the wrong bounds. A test that wants
 isolation instead passes `GrpcClientMetrics(registry=CollectorRegistry())`.
+The [Dishka provider](dependency-injection.md#metrics) calls the getter for
+you.
 
 ### Opting into retry and breaker visibility
 

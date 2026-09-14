@@ -257,8 +257,9 @@ to each other, so a knob added to `RetryConfig` cannot go missing from
 | `metrics` | `prometheus-client` | [`GrpcClientMetrics`](observability.md#the-shipped-collector), the Prometheus collector; a custom registry needs no extra |
 | `deadline` | `deadline-budget` | [deadline budget propagation](deadlines.md) (the layer is skipped without it) |
 | `settings` | `pydantic` | [`BaseGrpcClientSettings` and the section models](#from-the-environment) |
+| `dishka` | `dishka` | [the providers](dependency-injection.md) owning the factory's lifecycle |
 | `observability` | `metrics` + `tracing` | both of the above |
-| `all` | `deadline` + `health` + `metrics` + `settings` + `tracing` | everything |
+| `all` | `deadline` + `dishka` + `health` + `metrics` + `settings` + `tracing` | everything |
 
 `deadline` is deliberately **not** part of `observability`: propagating a
 budget is resilience, not telemetry, and an observability extra should not pull
@@ -267,7 +268,7 @@ in a dependency that changes what calls do.
 `import grpc_client_kit` never requires an extra. `HealthChecker` is the one
 gated export: it is resolved on first attribute access, and without
 `[health]` that access raises an `ImportError` naming the extra to install.
-`grpc_client_kit.settings` and `grpc_client_kit.metrics` are modules rather
-than exports and import their dependency when they are imported; without
-`[settings]` or `[metrics]` that import raises an `ImportError` naming the
-extra.
+`grpc_client_kit.settings`, `grpc_client_kit.metrics` and
+`grpc_client_kit.dishka` are modules rather than exports and import their
+dependency when they are imported; without `[settings]`, `[metrics]` or
+`[dishka]` that import raises an `ImportError` naming the extra.

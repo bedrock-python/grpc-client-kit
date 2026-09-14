@@ -8,7 +8,7 @@
 |---|---|
 | Package | `grpc-client-kit` on PyPI, import root `grpc_client_kit` |
 | Requires | Python 3.12+, `grpcio` 1.78+ — and nothing else on a bare install |
-| Install | `pip install grpc-client-kit` · extras: `health`, `tracing`, `metrics`, `deadline`, `settings`, `observability` (= `metrics` + `tracing`), `all` |
+| Install | `pip install grpc-client-kit` · extras: `health`, `tracing`, `metrics`, `deadline`, `settings`, `dishka`, `observability` (= `metrics` + `tracing`), `all` |
 | Async | All of it. Every entry point is `grpc.aio`, and the pool, the balancers and the checker are coroutines. |
 | Sync | None. There is no sync mirror and no thread-safe surface; this kit is for an event loop. |
 | Source | <https://github.com/bedrock-python/grpc-client-kit> |
@@ -316,6 +316,25 @@ The label names, their order and the buckets are grpc-server-kit's `GrpcServerMe
 `ValueError` (Prometheus registers a name once); use the getter, or `registry=` a fresh
 `CollectorRegistry()` in tests.
 
+### Dishka (`[dishka]` extra)
+
+`grpc_client_kit.dishka` owns the lifecycle a container otherwise writes by hand: resolve
+`GrpcClientFactory` and the health checker starts; close the container and the pool closes.
+
+| Name | Provides | Notes |
+|---|---|---|
+| `GrpcClientSettingsProvider(settings, *, component=None)` | `GrpcClientSettingsProtocol` | holds the settings object; `BaseGrpcClientSettings` or anything structural |
+| `PrometheusGrpcClientMetricsProvider(*, prefix=None, component=None)` | `GrpcClientMetricsProtocol \| None` | `get_grpc_client_metrics(prefix)` when `settings.metrics_enabled`, else `None`; `None` with a warning without `[metrics]` |
+| `AsyncGrpcClientProvider(*, shutdown_grace=5.0, ready_timeout=10.0, component=None)` | `GrpcClientFactory` | APP scope, async generator: `async with GrpcClientFactory(settings, metrics=...)` entered on first resolution, left on `container.close()` |
+| `grpc_client_providers(settings, *, component=None, metrics_prefix=None, shutdown_grace=5.0, ready_timeout=10.0)` | `tuple[Provider, ...]` | the three above, for `make_async_container(*grpc_client_providers(settings))` |
+
+The factory provider requests the settings and the registry through their protocols, so a
+container with `AsyncGrpcClientProvider` and no provider of `GrpcClientMetricsProtocol | None`
+is refused when it is built. Several upstreams are several Dishka components: one bundle per
+upstream with `component="users"`, resolved with `container.get(GrpcClientFactory,
+component="users")` or `Annotated[GrpcClientFactory, FromComponent("users")]`; each component
+resolves its own settings, and all of them hand out the one cached collector.
+
 ### Protocols and helpers
 
 Settings and collaborator protocols, all `runtime_checkable` and all exported:
@@ -341,6 +360,7 @@ named beside them:
 | `create_aio_channel` | `grpc_client_kit.utils` |
 | `BaseGrpcClientSettings`, `BaseConnectivitySettings`, `BaseChannelPoolSettings`, `BaseTimeoutSettings`, `BaseRetrySettings`, `BaseCircuitBreakerSettings`, `BaseWaitForReadySettings`, `BaseDeadlineBudgetSettings`, `BaseLoadBalancerSettings`, `BaseHealthCheckerSettings` | `grpc_client_kit.settings` (needs `[settings]`) |
 | `GrpcClientMetrics`, `get_grpc_client_metrics`, `DEFAULT_GRPC_BUCKETS` | `grpc_client_kit.metrics` (needs `[metrics]`) |
+| `AsyncGrpcClientProvider`, `GrpcClientSettingsProvider`, `PrometheusGrpcClientMetricsProvider`, `grpc_client_providers` | `grpc_client_kit.dishka` (needs `[dishka]`) |
 
 `ChannelWrapper` and `chain_token` in `grpc_client_kit.channel`, and `MethodCircuitState` in
 `grpc_client_kit.interceptors.circuit_breaker`, are internals left out of the public surface on
@@ -482,9 +502,10 @@ status codes and the log level are written by name (`gzip`, `UNAVAILABLE`, `DEBU
     ImportError instead of returning `False`**, and so does `getattr` with a default; probe with
     `importlib.util.find_spec("grpc_health")` or catch the ImportError. Tracing, metrics and the
     deadline budget layers are left out of the chain, with a log line, when their extra is
-    absent — the chain still builds and the calls still run. `grpc_client_kit.settings` and
-    `grpc_client_kit.metrics` import their extra at import time: without `[settings]` or
-    `[metrics]`, importing the module raises `ImportError` naming the extra.
+    absent — the chain still builds and the calls still run. `grpc_client_kit.settings`,
+    `grpc_client_kit.metrics` and `grpc_client_kit.dishka` import their extra at import time:
+    without `[settings]`, `[metrics]` or `[dishka]`, importing the module raises `ImportError`
+    naming the extra.
 21. **There is no sync API and no thread safety.** Everything here assumes one event loop.
 
 ## Common mistakes
@@ -611,7 +632,8 @@ Fetch a page when the task is the one named beside it.
 | [Load balancing](guide/load-balancing.md) | strategies, health-narrowed eligibility, passive quarantine |
 | [Native gRPC or the kit?](guide/native-vs-kit.md) | deciding which layer owns LB, retries, idling and health |
 | [Health checking](guide/health.md) | the probe loop, cold starts, backoff, status callbacks |
-| [Observability](guide/observability.md) | what a log record, a metric sample and a span actually contain |
-| [Advanced](guide/advanced.md) | target validation, plain `grpc.aio` interceptors, dependency injection |
+| [Observability](guide/observability.md) | what a log record, a metric sample and a span actually contain, and the shipped Prometheus collector |
+| [Dependency injection](guide/dependency-injection.md) | the Dishka providers, what resolving and closing does, one component per upstream |
+| [Advanced](guide/advanced.md) | target validation, plain `grpc.aio` interceptors |
 | [API reference](reference/index.md) | an exact signature, field or docstring — HTML only, see above |
 | [Changelog](changelog.md) | what changed between versions |
