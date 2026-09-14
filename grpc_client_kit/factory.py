@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import fields
 from typing import TYPE_CHECKING, Any
 
 import grpc.aio
@@ -8,7 +9,7 @@ import grpc.aio
 from .balancers import LoadBalancer, LoadBalancerConfig, LoadBalancingStrategy, create_balancer
 from .channel import ChannelPool
 from .client import GrpcClient
-from .config import GrpcClientConfig
+from .config import ConnectivityConfig, GrpcClientConfig
 from .interceptors import (
     CircuitBreakerConfig,
     DeadlineBudgetConfig,
@@ -34,6 +35,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _MISSING_MESSAGE = "Install grpc-client-kit[health] (grpcio-health-checking) to use gRPC health checking"
+
+# What a duck-typed `connectivity` block may carry: the dataclass's own fields, so a knob added there
+# is read from settings without this module having to hear about it.
+_CONNECTIVITY_FIELDS = tuple(field.name for field in fields(ConnectivityConfig))
 
 
 def _validate_settings(settings: object | None) -> None:
@@ -306,6 +311,10 @@ class GrpcClientFactory:
                         metrics_registry=metrics_registry,
                         service_name=actual_service_name,
                         sensitive_headers=getattr(self._settings, "sensitive_headers", None),
+                        sensitive_methods=getattr(self._settings, "sensitive_methods", None),
+                        sensitive_patterns=getattr(self._settings, "sensitive_patterns", None),
+                        log_request_payload=getattr(self._settings, "log_request_payload", False),
+                        log_response_payload=getattr(self._settings, "log_response_payload", False),
                         enable_method_label=getattr(self._settings, "enable_method_label", True),
                         success_log_level=getattr(self._settings, "success_log_level", logging.INFO),
                     )
@@ -371,8 +380,8 @@ class GrpcClientFactory:
         Channel construction settings are optional blocks (see `protocols.GrpcChannelExtrasProtocol`)
         and are read with `getattr`, so a settings model that declares none of them still satisfies
         the factory. ``connectivity`` joins them on the same terms: a settings object that carries a
-        `config.ConnectivityConfig` under that name has its channels tuned by it, and one that does
-        not is left with gRPC's defaults.
+        `config.ConnectivityConfig` — or a block with its fields — under that name has its channels
+        tuned by it, and one that does not is left with gRPC's defaults.
         """
         if self._settings:
             actual_target = target or self._settings.target
@@ -380,7 +389,7 @@ class GrpcClientFactory:
             credentials = getattr(self._settings, "credentials", None)
             options = getattr(self._settings, "options", None)
             compression = getattr(self._settings, "compression", None)
-            connectivity = getattr(self._settings, "connectivity", None)
+            connectivity = self._build_connectivity_config(getattr(self._settings, "connectivity", None))
         else:
             actual_target = target
             insecure = False
@@ -422,11 +431,23 @@ class GrpcClientFactory:
             health_checker=self._health_checker,
         )
 
-    def _build_timeout_config(self, s: TimeoutSettingsProtocol | None) -> TimeoutConfig | None:
-        """Build TimeoutConfig from settings protocol."""
+    def _build_connectivity_config(self, s: Any | None) -> ConnectivityConfig | None:
+        """Build ConnectivityConfig from an optional settings block (duck-typed).
+
+        A ready `config.ConnectivityConfig` is taken as it is. Any other block is read field by
+        field, and a field it does not carry keeps the dataclass's own default.
+        """
         if not s:
             return None
-        return TimeoutConfig(default=s.default)
+        if isinstance(s, ConnectivityConfig):
+            return s
+        return ConnectivityConfig(**{name: getattr(s, name) for name in _CONNECTIVITY_FIELDS if hasattr(s, name)})
+
+    def _build_timeout_config(self, s: TimeoutSettingsProtocol | None) -> TimeoutConfig | None:
+        """Build TimeoutConfig from settings protocol; per-method budgets are read when the block has them."""
+        if not s:
+            return None
+        return TimeoutConfig(default=s.default, per_method=dict(getattr(s, "per_method", None) or {}))
 
     def _build_retry_config(
         self, s: RetrySettingsProtocol | None, metrics: GrpcClientMetricsProtocol | None = None

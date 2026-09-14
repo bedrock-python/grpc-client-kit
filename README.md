@@ -66,6 +66,7 @@ pip install "grpc-client-kit[health]"             # + grpc.health.v1 monitoring
 pip install "grpc-client-kit[metrics,tracing]"    # + Prometheus + OpenTelemetry
 pip install "grpc-client-kit[observability]"      # + metrics and tracing together
 pip install "grpc-client-kit[deadline]"           # + request budget propagation
+pip install "grpc-client-kit[settings]"           # + pydantic settings models
 pip install "grpc-client-kit[all]"                # everything
 ```
 
@@ -121,7 +122,11 @@ Any object carrying the fields of `GrpcClientSettingsProtocol` works —
 a pydantic model, a dataclass, a plain class. Everything optional
 (`credentials`, `options`, `compression`, `metrics_registry`,
 `sensitive_headers`) is read through `getattr`, so a minimal settings object
-stays valid. See the
+stays valid. Or take the shipped one: `grpc_client_kit.settings.BaseGrpcClientSettings`
+(the `[settings]` extra) is that shape written down once — plain pydantic
+models with the kit's own defaults and bounds, one per upstream, nested under
+your service's `BaseSettings` for loading from the environment, and
+`to_config()` on every section for a hand-built chain. See the
 [configuration guide](https://bedrock-python.github.io/grpc-client-kit/guide/configuration/)
 for the full field list.
 
@@ -270,6 +275,7 @@ names the extra to install.
 | `channel.ChannelPool` | Channels pooled by full identity, idle eviction, health flags | core |
 | `client.GrpcClient` | Stub factory: target selection + channel acquisition | core |
 | `factory.GrpcClientFactory` | Settings → pool, balancer, health checker, per-target chains | core |
+| `settings.BaseGrpcClientSettings` | The settings shape as pydantic models mirroring the dataclasses, `to_config()` on each | `settings` |
 | `balancers.*` | Round-robin / random / weighted selection with health filtering | core |
 | `interceptors.*` | Context, logging, timeout, wait-for-ready, retry, circuit breaker + chain builder | core |
 | `deadline` + `interceptors.deadline` | The request budget in a contextvar, and the layer that trims every call to it | `deadline` |
@@ -289,8 +295,9 @@ with any backend you pass. The `[metrics]` extra only supplies the usual one.
 | `tracing` | `opentelemetry-api` | `AsyncClientTracingInterceptor` (a pass-through without it) |
 | `metrics` | `prometheus-client` | the default metrics backend; a custom registry needs no extra |
 | `deadline` | `deadline-budget` | `AsyncDeadlineBudgetInterceptor` (the layer is skipped without it) |
+| `settings` | `pydantic` | `BaseGrpcClientSettings` and the section models |
 | `observability` | `metrics` + `tracing` | both of the above |
-| `all` | `deadline` + `health` + `metrics` + `tracing` | everything |
+| `all` | `deadline` + `health` + `metrics` + `settings` + `tracing` | everything |
 
 `deadline` is deliberately not part of `observability`: propagating a budget is
 resilience, not telemetry, and an observability extra should not pull in a

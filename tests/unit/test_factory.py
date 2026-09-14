@@ -13,10 +13,13 @@ import pytest
 
 from grpc_client_kit.balancers import RoundRobinLoadBalancer
 from grpc_client_kit.client import GrpcClient
+from grpc_client_kit.config import ConnectivityConfig
 from grpc_client_kit.factory import GrpcClientFactory, _load_health_checker
 from grpc_client_kit.health import HealthChecker
 from grpc_client_kit.interceptors.circuit_breaker import AsyncCircuitBreakerInterceptor
+from grpc_client_kit.interceptors.client_logging import AsyncLoggingInterceptor
 from grpc_client_kit.interceptors.metrics import AsyncClientMetricsInterceptor
+from grpc_client_kit.interceptors.timeout import AsyncTimeoutInterceptor
 from tests.helpers import make_interceptor, make_pool
 
 from .conftest import (
@@ -247,6 +250,82 @@ def test__factory__explicit_service_name__names_the_observability_layers_after_i
     # Logging and metrics are both installed by these settings.
     assert len(chain) >= 2
     assert chain[0]._service_name == "CustomSrv"
+
+
+def test__factory__per_method_budgets_in_the_timeout_block__reach_the_timeout_layer() -> None:
+    """A settings object that spells out per-method budgets must not have them dropped on the way."""
+    # Arrange
+    settings = StubClientSettings(timeout=SimpleNamespace(default=5.0, per_method={"/pkg.Svc/Export": 60.0}))
+    factory = GrpcClientFactory(settings=settings)
+
+    # Act
+    client: GrpcClient = factory.create_client(make_stub_class("Stub"))
+
+    # Assert
+    (timeout,) = layers_of(client, "localhost:50051", AsyncTimeoutInterceptor)
+    assert timeout._default_timeout == 5.0
+    assert timeout._per_method_timeouts == {"/pkg.Svc/Export": 60.0}
+
+
+def test__factory__timeout_block_with_only_a_default__keeps_the_layer_it_always_built() -> None:
+    """The protocol requires `default` alone, and a block carrying nothing more is left as it was."""
+    # Arrange
+    factory = GrpcClientFactory(settings=StubClientSettings(timeout=SimpleNamespace(default=5.0)))
+
+    # Act
+    client: GrpcClient = factory.create_client(make_stub_class("Stub"))
+
+    # Assert
+    (timeout,) = layers_of(client, "localhost:50051", AsyncTimeoutInterceptor)
+    assert timeout._default_timeout == 5.0
+    assert timeout._per_method_timeouts == {}
+
+
+def test__factory__connectivity_block_with_the_dataclass_fields__is_read_field_by_field() -> None:
+    """A block that is not the dataclass — a pydantic section, say — tunes the channel all the same."""
+    # Arrange
+    settings = StubClientSettings(connectivity=SimpleNamespace(keepalive_time=15.0, max_reconnect_backoff=5.0))
+    factory = GrpcClientFactory(settings=settings)
+
+    # Act
+    client: GrpcClient = factory.create_client(make_stub_class("Stub"))
+
+    # Assert
+    assert client._config.connectivity == ConnectivityConfig(keepalive_time=15.0, max_reconnect_backoff=5.0)
+
+
+def test__factory__connectivity_config_in_settings__is_taken_as_it_is() -> None:
+    """The dataclass itself under that name keeps working exactly as before, identity included."""
+    # Arrange
+    connectivity = ConnectivityConfig(keepalive_time=15.0)
+    factory = GrpcClientFactory(settings=StubClientSettings(connectivity=connectivity))
+
+    # Act
+    client: GrpcClient = factory.create_client(make_stub_class("Stub"))
+
+    # Assert
+    assert client._config.connectivity is connectivity
+
+
+def test__factory__payload_and_sensitivity_knobs_in_settings__reach_the_logging_layer() -> None:
+    """Every knob of ObservabilityConfig a settings object can carry is read, not only the three flags."""
+    # Arrange
+    settings = StubClientSettings(
+        sensitive_methods={"/pkg.Svc/Login"},
+        sensitive_patterns=[r".*/Secret.*"],
+        log_request_payload=True,
+        log_response_payload=True,
+    )
+    factory = GrpcClientFactory(settings=settings)
+
+    # Act
+    client: GrpcClient = factory.create_client(make_stub_class("Stub"))
+
+    # Assert
+    (logging_layer,) = layers_of(client, "localhost:50051", AsyncLoggingInterceptor)
+    assert logging_layer._sensitive_methods == {"/pkg.Svc/Login"}
+    assert [pattern.pattern for pattern in logging_layer._sensitive_patterns] == [r".*/Secret.*"]
+    assert (logging_layer._log_request_payload, logging_layer._log_response_payload) == (True, True)
 
 
 # --------------------------------------------------------------------------------------------
