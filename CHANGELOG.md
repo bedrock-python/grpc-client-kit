@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/bedrock-python/grpc-client-kit/compare/grpc-client-kit-v0.3.0...grpc-client-kit-v0.4.0) (2026-09-14)
+
+
+### Features
+
+* a container-owned channel pool for the Dishka providers, shared by every upstream told to borrow it ([ecdc4e2](https://github.com/bedrock-python/grpc-client-kit/commit/ecdc4e264bdad2b80311f25bfd922ad15ea2db07)), closes [#31](https://github.com/bedrock-python/grpc-client-kit/issues/31)
+
 ## [0.3.0](https://github.com/bedrock-python/grpc-client-kit/compare/grpc-client-kit-v0.2.0...grpc-client-kit-v0.3.0) (2026-09-14)
 
 
