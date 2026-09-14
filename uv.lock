@@ -210,11 +210,11 @@ wheels = [
 
 [[package]]
 name = "deadline-budget"
-version = "0.1.2"
+version = "0.1.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0f/05/b8f3a883b0f0e19b11f9af7fee7775ed5226cf48803641d3020808e6bb66/deadline_budget-0.1.2.tar.gz", hash = "sha256:bb53847c85a7bfe3d4399ce1a0c310a93904d979a5586626fc97bb8eaf55bfdd", size = 12274, upload-time = "2026-08-28T15:46:30.069Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/02/ca/bf94e0a74e401594bedef0a54050213a5201596c9077d591a274da1d3fe6/deadline_budget-0.1.3.tar.gz", hash = "sha256:7c77fe86682036e444cee4194175e331ac20cbe067e305591dc838fc030b01fd", size = 13238, upload-time = "2026-09-06T20:52:05.636Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/69/64/ac879e5c01da6bd004fb9859a10a6cfa1957f54f7cb4afa73c667e11ead7/deadline_budget-0.1.2-py3-none-any.whl", hash = "sha256:5a673d849d134acb072bd6fcc575af0b1478b45a1db7551121021da4873e2098", size = 16477, upload-time = "2026-08-28T15:46:29.057Z" },
+    { url = "https://files.pythonhosted.org/packages/14/a2/144e41bacd69008f5bd5301982812b6487e36f6ab28cc9aa9834f39f0647/deadline_budget-0.1.3-py3-none-any.whl", hash = "sha256:be9b29931f6b7a0513bb18e70c236bd192343a10bfe374196a3301c574f3cb69", size = 17175, upload-time = "2026-09-06T20:52:04.831Z" },
 ]
 
 [[package]]
