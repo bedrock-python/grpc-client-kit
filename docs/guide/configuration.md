@@ -245,7 +245,7 @@ registry comes from `create_client(metrics=...)`, and a hand-built chain sets
 them on the configs `to_config()` returns. The models mirror the dataclasses
 field for field, defaults included, and the kit's own test suite pins the two
 to each other, so a knob added to `RetryConfig` cannot go missing from
-`RetrySettings`.
+`BaseRetrySettings`.
 
 ## Optional dependencies
 

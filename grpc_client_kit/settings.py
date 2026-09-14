@@ -79,7 +79,7 @@ def _status_code_by_name(value: object) -> object:
         raise ValueError(f"unknown gRPC status code {value!r}; expected one of {names}") from None
 
 
-class ConnectivitySettings(BaseModel):
+class BaseConnectivitySettings(BaseModel):
     """``connectivity``: keepalive and reconnect backoff in seconds, `config.ConnectivityConfig` by environment.
 
     Opt-in like the dataclass: an absent block leaves every channel argument at gRPC's own default,
@@ -115,7 +115,7 @@ class ConnectivitySettings(BaseModel):
         return ConnectivityConfig(**self.model_dump())
 
 
-class ChannelPoolSettings(BaseModel):
+class BaseChannelPoolSettings(BaseModel):
     """``pool``: what `channel.ChannelPool` is sized with, read by the factory."""
 
     model_config = ConfigDict(extra="forbid")
@@ -126,7 +126,7 @@ class ChannelPoolSettings(BaseModel):
     )
 
 
-class TimeoutSettings(BaseModel):
+class BaseTimeoutSettings(BaseModel):
     """``timeout``: the budget of a whole call, retries included; `interceptors.TimeoutConfig` by environment."""
 
     model_config = ConfigDict(extra="forbid")
@@ -144,7 +144,7 @@ class TimeoutSettings(BaseModel):
         return TimeoutConfig(**self.model_dump())
 
 
-class RetrySettings(BaseModel):
+class BaseRetrySettings(BaseModel):
     """``retry``: the retry policy, `interceptors.RetryConfig` by environment.
 
     Status codes are written by name (``UNAVAILABLE``). ``on_retry`` and ``metrics`` are runtime
@@ -179,7 +179,7 @@ class RetrySettings(BaseModel):
         return RetryConfig(**self.model_dump())
 
 
-class CircuitBreakerSettings(BaseModel):
+class BaseCircuitBreakerSettings(BaseModel):
     """``circuit_breaker``: per-method, per-target breaking; `interceptors.CircuitBreakerConfig` by environment.
 
     ``metrics`` is a runtime object and has no field here; the factory injects the registry.
@@ -197,7 +197,7 @@ class CircuitBreakerSettings(BaseModel):
         return CircuitBreakerConfig(**self.model_dump())
 
 
-class WaitForReadySettings(BaseModel):
+class BaseWaitForReadySettings(BaseModel):
     """``wait_for_ready``: wait for a connection instead of failing fast; `interceptors.WaitForReadyConfig`."""
 
     model_config = ConfigDict(extra="forbid")
@@ -215,7 +215,7 @@ class WaitForReadySettings(BaseModel):
         return WaitForReadyConfig(**self.model_dump())
 
 
-class DeadlineBudgetSettings(BaseModel):
+class BaseDeadlineBudgetSettings(BaseModel):
     """``deadline_budget``: request budget propagation; `interceptors.DeadlineBudgetConfig` by environment.
 
     Needs the ``deadline`` extra to take effect; without it the layer is skipped with a warning.
@@ -232,7 +232,7 @@ class DeadlineBudgetSettings(BaseModel):
         return DeadlineBudgetConfig(**self.model_dump())
 
 
-class LoadBalancerSettings(BaseModel):
+class BaseLoadBalancerSettings(BaseModel):
     """``balancer``: how a target is picked from ``targets``; `balancers.LoadBalancerConfig` by environment."""
 
     model_config = ConfigDict(extra="forbid")
@@ -249,7 +249,7 @@ class LoadBalancerSettings(BaseModel):
         return LoadBalancerConfig(**self.model_dump())
 
 
-class HealthCheckerSettings(BaseModel):
+class BaseHealthCheckerSettings(BaseModel):
     """``health_checker``: active ``grpc.health.v1`` probing of ``targets``, read by the factory.
 
     Needs the ``health`` extra: the factory raises ``ImportError`` naming it when this block is set.
@@ -279,7 +279,7 @@ class BaseGrpcClientSettings(BaseModel):
     variables is set. Subclass it to change a default or add fields of your own::
 
         class UsersGrpcSettings(BaseGrpcClientSettings):
-            retry: RetrySettings | None = Field(default_factory=RetrySettings)
+            retry: BaseRetrySettings | None = Field(default_factory=BaseRetrySettings)
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -299,7 +299,7 @@ class BaseGrpcClientSettings(BaseModel):
     compression: grpc.Compression | None = Field(
         default=None, description="Channel compression by name: none, deflate or gzip (None: the gRPC default)"
     )
-    connectivity: ConnectivitySettings | None = Field(
+    connectivity: BaseConnectivitySettings | None = Field(
         default=None, description="Keepalive and reconnect tuning (None: gRPC's defaults)"
     )
 
@@ -326,22 +326,26 @@ class BaseGrpcClientSettings(BaseModel):
     )
 
     # The blocks the factory maps onto the pool, the chain, the balancer and the health checker
-    pool: ChannelPoolSettings | None = Field(default_factory=ChannelPoolSettings, description="Channel pool sizing")
-    timeout: TimeoutSettings | None = Field(
-        default_factory=TimeoutSettings, description="Call budgets (None: no timeout layer, so no deadline at all)"
+    pool: BaseChannelPoolSettings | None = Field(
+        default_factory=BaseChannelPoolSettings, description="Channel pool sizing"
     )
-    retry: RetrySettings | None = Field(default=None, description="Retry policy (None: no retry layer)")
-    circuit_breaker: CircuitBreakerSettings | None = Field(
+    timeout: BaseTimeoutSettings | None = Field(
+        default_factory=BaseTimeoutSettings, description="Call budgets (None: no timeout layer, so no deadline at all)"
+    )
+    retry: BaseRetrySettings | None = Field(default=None, description="Retry policy (None: no retry layer)")
+    circuit_breaker: BaseCircuitBreakerSettings | None = Field(
         default=None, description="Circuit breaker (None: no breaker layer)"
     )
-    wait_for_ready: WaitForReadySettings | None = Field(
+    wait_for_ready: BaseWaitForReadySettings | None = Field(
         default=None, description="Wait for a connection instead of failing fast (None: gRPC's fail-fast)"
     )
-    deadline_budget: DeadlineBudgetSettings | None = Field(
+    deadline_budget: BaseDeadlineBudgetSettings | None = Field(
         default=None, description="Request budget propagation (None: none; needs the deadline extra)"
     )
-    balancer: LoadBalancerSettings | None = Field(default=None, description="Strategy over targets (None: round-robin)")
-    health_checker: HealthCheckerSettings | None = Field(
+    balancer: BaseLoadBalancerSettings | None = Field(
+        default=None, description="Strategy over targets (None: round-robin)"
+    )
+    health_checker: BaseHealthCheckerSettings | None = Field(
         default=None, description="Active probing of targets (None: none; needs the health extra)"
     )
 
@@ -401,14 +405,14 @@ class BaseGrpcClientSettings(BaseModel):
 
 
 __all__ = [
+    "BaseChannelPoolSettings",
+    "BaseCircuitBreakerSettings",
+    "BaseConnectivitySettings",
+    "BaseDeadlineBudgetSettings",
     "BaseGrpcClientSettings",
-    "ChannelPoolSettings",
-    "CircuitBreakerSettings",
-    "ConnectivitySettings",
-    "DeadlineBudgetSettings",
-    "HealthCheckerSettings",
-    "LoadBalancerSettings",
-    "RetrySettings",
-    "TimeoutSettings",
-    "WaitForReadySettings",
+    "BaseHealthCheckerSettings",
+    "BaseLoadBalancerSettings",
+    "BaseRetrySettings",
+    "BaseTimeoutSettings",
+    "BaseWaitForReadySettings",
 ]

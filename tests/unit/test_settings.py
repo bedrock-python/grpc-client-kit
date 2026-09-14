@@ -46,16 +46,16 @@ from grpc_client_kit.interceptors import (
     WaitForReadyConfig,
 )
 from grpc_client_kit.settings import (
+    BaseChannelPoolSettings,
+    BaseCircuitBreakerSettings,
+    BaseConnectivitySettings,
+    BaseDeadlineBudgetSettings,
     BaseGrpcClientSettings,
-    ChannelPoolSettings,
-    CircuitBreakerSettings,
-    ConnectivitySettings,
-    DeadlineBudgetSettings,
-    HealthCheckerSettings,
-    LoadBalancerSettings,
-    RetrySettings,
-    TimeoutSettings,
-    WaitForReadySettings,
+    BaseHealthCheckerSettings,
+    BaseLoadBalancerSettings,
+    BaseRetrySettings,
+    BaseTimeoutSettings,
+    BaseWaitForReadySettings,
 )
 
 from .conftest import layers_of, make_stub_class
@@ -70,13 +70,13 @@ ENV_PREFIX = "GCK_UNIT_TEST_"
 # Each shipped section against the dataclass it becomes, and the fields of that dataclass which hold
 # runtime objects — callbacks, registries — and therefore cannot come from an environment.
 MIRRORS = [
-    (ConnectivitySettings, ConnectivityConfig, set()),
-    (TimeoutSettings, TimeoutConfig, set()),
-    (RetrySettings, RetryConfig, {"on_retry", "metrics"}),
-    (CircuitBreakerSettings, CircuitBreakerConfig, {"metrics"}),
-    (WaitForReadySettings, WaitForReadyConfig, set()),
-    (DeadlineBudgetSettings, DeadlineBudgetConfig, set()),
-    (LoadBalancerSettings, LoadBalancerConfig, set()),
+    (BaseConnectivitySettings, ConnectivityConfig, set()),
+    (BaseTimeoutSettings, TimeoutConfig, set()),
+    (BaseRetrySettings, RetryConfig, {"on_retry", "metrics"}),
+    (BaseCircuitBreakerSettings, CircuitBreakerConfig, {"metrics"}),
+    (BaseWaitForReadySettings, WaitForReadyConfig, set()),
+    (BaseDeadlineBudgetSettings, DeadlineBudgetConfig, set()),
+    (BaseLoadBalancerSettings, LoadBalancerConfig, set()),
 ]
 
 # The observability flags the protocol spells differently from the dataclass.
@@ -197,8 +197,8 @@ def test__client_settings__defaults__are_a_pooled_client_with_a_deadline_and_not
 
     # Assert
     assert settings.to_config() == GrpcClientConfig()
-    assert settings.pool == ChannelPoolSettings(max_channels_per_target=1, idle_timeout=300.0)
-    assert settings.timeout == TimeoutSettings(default=10.0, per_method={})
+    assert settings.pool == BaseChannelPoolSettings(max_channels_per_target=1, idle_timeout=300.0)
+    assert settings.timeout == BaseTimeoutSettings(default=10.0, per_method={})
     assert (settings.tracing_enabled, settings.metrics_enabled, settings.logging_enabled) == (False, False, True)
     assert settings.retry is None
     assert settings.circuit_breaker is None
@@ -299,8 +299,8 @@ def test__client_settings__fields_and_defaults__cover_the_channel_config_and_the
 def test__client_settings__pool_and_health_checker_blocks__carry_what_the_factory_reads() -> None:
     """Neither block becomes a dataclass, so their field sets are pinned to the factory's reads directly."""
     # Act & Assert
-    assert set(ChannelPoolSettings.model_fields) == {"max_channels_per_target", "idle_timeout"}
-    assert set(HealthCheckerSettings.model_fields) == {"check_interval", "timeout", "service"}
+    assert set(BaseChannelPoolSettings.model_fields) == {"max_channels_per_target", "idle_timeout"}
+    assert set(BaseHealthCheckerSettings.model_fields) == {"check_interval", "timeout", "service"}
 
 
 # --------------------------------------------------------------------------------------------
@@ -321,11 +321,11 @@ def test__client_settings__type_checked_as_the_protocol__passes_mypy(tmp_path: P
     snippet = tmp_path / "settings_snippet.py"
     snippet.write_text(
         "from grpc_client_kit import GrpcClientFactory, GrpcClientSettingsProtocol\n"
-        "from grpc_client_kit.settings import BaseGrpcClientSettings, RetrySettings\n"
+        "from grpc_client_kit.settings import BaseGrpcClientSettings, BaseRetrySettings\n"
         "\n"
         "\n"
         "class Settings(BaseGrpcClientSettings):\n"
-        "    retry: RetrySettings | None = RetrySettings(max_attempts=5)\n"
+        "    retry: BaseRetrySettings | None = BaseRetrySettings(max_attempts=5)\n"
         "\n"
         "\n"
         "def takes_protocol(settings: GrpcClientSettingsProtocol) -> None: ...\n"
@@ -388,29 +388,31 @@ def test__retry_settings__unknown_status_code__is_refused_naming_the_choices() -
     """A code that does not exist would otherwise be a retry policy that never fires."""
     # Act & Assert
     with pytest.raises(ValidationError, match=r"unknown gRPC status code 'BOGUS'.*UNAVAILABLE"):
-        RetrySettings(retryable_codes=["BOGUS"])  # type: ignore[list-item]
+        BaseRetrySettings(retryable_codes=["BOGUS"])  # type: ignore[list-item]
 
 
 def test__retry_settings__status_codes_as_members__are_kept() -> None:
     """Code, unlike an environment, writes the enum itself."""
     # Act & Assert
-    assert RetrySettings(retryable_codes={grpc.StatusCode.UNAVAILABLE}).retryable_codes == {grpc.StatusCode.UNAVAILABLE}
+    assert BaseRetrySettings(retryable_codes={grpc.StatusCode.UNAVAILABLE}).retryable_codes == {
+        grpc.StatusCode.UNAVAILABLE
+    }
 
 
 @pytest.mark.parametrize(
     ("model", "field", "value"),
     [
-        (ConnectivitySettings, "keepalive_time", 0.0),
-        (ConnectivitySettings, "max_pings_without_data", -1),
-        (ChannelPoolSettings, "max_channels_per_target", 0),
-        (TimeoutSettings, "default", -1.0),
-        (RetrySettings, "max_attempts", 0),
-        (RetrySettings, "backoff_multiplier", 0.5),
-        (RetrySettings, "jitter", 1.5),
-        (CircuitBreakerSettings, "fail_threshold", 0),
-        (CircuitBreakerSettings, "half_open_max_calls", 0),
-        (DeadlineBudgetSettings, "reserve_for_next", -1.0),
-        (HealthCheckerSettings, "check_interval", 0.0),
+        (BaseConnectivitySettings, "keepalive_time", 0.0),
+        (BaseConnectivitySettings, "max_pings_without_data", -1),
+        (BaseChannelPoolSettings, "max_channels_per_target", 0),
+        (BaseTimeoutSettings, "default", -1.0),
+        (BaseRetrySettings, "max_attempts", 0),
+        (BaseRetrySettings, "backoff_multiplier", 0.5),
+        (BaseRetrySettings, "jitter", 1.5),
+        (BaseCircuitBreakerSettings, "fail_threshold", 0),
+        (BaseCircuitBreakerSettings, "half_open_max_calls", 0),
+        (BaseDeadlineBudgetSettings, "reserve_for_next", -1.0),
+        (BaseHealthCheckerSettings, "check_interval", 0.0),
     ],
 )
 def test__section_model__value_the_layer_would_refuse__is_refused_at_load(
@@ -425,7 +427,7 @@ def test__section_model__value_the_layer_would_refuse__is_refused_at_load(
 def test__load_balancer_settings__unknown_strategy__is_refused() -> None:
     # Act & Assert
     with pytest.raises(ValidationError, match="strategy"):
-        LoadBalancerSettings(strategy="sticky")  # type: ignore[arg-type]
+        BaseLoadBalancerSettings(strategy="sticky")  # type: ignore[arg-type]
 
 
 def test__client_settings__target_and_targets_together__are_refused() -> None:
@@ -466,13 +468,13 @@ def test__connectivity_settings__contradictory_reconnect_bounds__are_refused_by_
     """The cross-field check belongs to the dataclass; the model does not repeat it."""
     # Act & Assert
     with pytest.raises(ValueError, match="min_reconnect_backoff must not exceed"):
-        ConnectivitySettings(min_reconnect_backoff=10.0, max_reconnect_backoff=1.0).to_config()
+        BaseConnectivitySettings(min_reconnect_backoff=10.0, max_reconnect_backoff=1.0).to_config()
 
 
 def test__section_models__to_config__hand_out_copies_of_their_containers() -> None:
     """A chain must not share a dict with the settings object it was built from."""
     # Arrange
-    settings = TimeoutSettings(per_method={"/pkg.Svc/M": 1.0})
+    settings = BaseTimeoutSettings(per_method={"/pkg.Svc/M": 1.0})
 
     # Act
     config = settings.to_config()
@@ -492,15 +494,15 @@ def test__settings_module__all__is_sorted_and_complete() -> None:
     assert settings_module.__all__ == sorted(settings_module.__all__)
     assert set(settings_module.__all__) == {
         "BaseGrpcClientSettings",
-        "ChannelPoolSettings",
-        "CircuitBreakerSettings",
-        "ConnectivitySettings",
-        "DeadlineBudgetSettings",
-        "HealthCheckerSettings",
-        "LoadBalancerSettings",
-        "RetrySettings",
-        "TimeoutSettings",
-        "WaitForReadySettings",
+        "BaseChannelPoolSettings",
+        "BaseCircuitBreakerSettings",
+        "BaseConnectivitySettings",
+        "BaseDeadlineBudgetSettings",
+        "BaseHealthCheckerSettings",
+        "BaseLoadBalancerSettings",
+        "BaseRetrySettings",
+        "BaseTimeoutSettings",
+        "BaseWaitForReadySettings",
     }
 
 

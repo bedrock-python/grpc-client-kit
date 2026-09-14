@@ -315,7 +315,7 @@ named beside them:
 | `AsyncPassiveOutlierInterceptor`, `DEFAULT_QUARANTINE_SECONDS` | `grpc_client_kit.interceptors.outlier` |
 | `validate_target`, `MIN_PORT`, `MAX_PORT` | `grpc_client_kit.validation` |
 | `create_aio_channel` | `grpc_client_kit.utils` |
-| `BaseGrpcClientSettings`, `ConnectivitySettings`, `ChannelPoolSettings`, `TimeoutSettings`, `RetrySettings`, `CircuitBreakerSettings`, `WaitForReadySettings`, `DeadlineBudgetSettings`, `LoadBalancerSettings`, `HealthCheckerSettings` | `grpc_client_kit.settings` (needs `[settings]`) |
+| `BaseGrpcClientSettings`, `BaseConnectivitySettings`, `BaseChannelPoolSettings`, `BaseTimeoutSettings`, `BaseRetrySettings`, `BaseCircuitBreakerSettings`, `BaseWaitForReadySettings`, `BaseDeadlineBudgetSettings`, `BaseLoadBalancerSettings`, `BaseHealthCheckerSettings` | `grpc_client_kit.settings` (needs `[settings]`) |
 
 `ChannelWrapper` and `chain_token` in `grpc_client_kit.channel`, and `MethodCircuitState` in
 `grpc_client_kit.interceptors.circuit_breaker`, are internals left out of the public surface on
@@ -345,9 +345,9 @@ yields the default** — pydantic users should set `extra="forbid"`.
 The shipped shape is `grpc_client_kit.settings.BaseGrpcClientSettings` (the `settings` extra):
 a plain pydantic `BaseModel` satisfying the protocol and carrying every optional block above,
 with the kit's own defaults and bounds and `extra="forbid"`. Its sections —
-`ConnectivitySettings`, `ChannelPoolSettings`, `TimeoutSettings`, `RetrySettings`,
-`CircuitBreakerSettings`, `WaitForReadySettings`, `DeadlineBudgetSettings`,
-`LoadBalancerSettings`, `HealthCheckerSettings` — are `BaseModel`s too, so none of them reads
+`BaseConnectivitySettings`, `BaseChannelPoolSettings`, `BaseTimeoutSettings`, `BaseRetrySettings`,
+`BaseCircuitBreakerSettings`, `BaseWaitForReadySettings`, `BaseDeadlineBudgetSettings`,
+`BaseLoadBalancerSettings`, `BaseHealthCheckerSettings` — are `BaseModel`s too, so none of them reads
 the environment on its own; nest one `BaseGrpcClientSettings` per upstream under the service's
 `BaseSettings` with `env_nested_delimiter="__"` (`USERS_GRPC__RETRY__MAX_ATTEMPTS=5`). Every
 section that mirrors a dataclass has `to_config()` returning it, and
