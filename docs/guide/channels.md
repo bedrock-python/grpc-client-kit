@@ -195,8 +195,9 @@ kill any stream that outlives the timeout — with core idling, a held stub stay
 valid for life and a week-long stream is safe, while an idle connection still
 releases its socket on both ends.
 
-Pass `metrics=` to the pool — or set `metrics_registry` on your settings — and
-every change reports the [pool gauges](observability.md#pool-statistics).
+Pass `metrics=` to the pool — or to the factory, or set `metrics_registry` on
+your settings — and every change reports the
+[pool gauges](observability.md#pool-statistics).
 
 ## Health is per address, not per identity
 

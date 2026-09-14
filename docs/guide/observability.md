@@ -12,11 +12,14 @@ network attempt.
 object toggle the three layers; `ObservabilityConfig` is the same choice for a
 hand-built chain. Two rules govern what actually ends up in the chain:
 
-- **Metrics need a registry.** `metrics_enabled=True` with no
-  `metrics_registry` (and no `metrics=` argument to `create_client`) would
-  record nothing, so the layer is left out entirely and a warning is logged —
-  "no metrics" is visible in the chain instead of being a silent hop. An
-  explicit `create_client(metrics=...)` wins over `settings.metrics_registry`.
+- **Metrics need a registry.** `metrics_enabled=True` with no registry at
+  all would record nothing, so the layer is left out entirely and a warning
+  is logged — "no metrics" is visible in the chain instead of being a silent
+  hop. A registry reaches the factory three ways, nearest wins:
+  `create_client(metrics=...)` for one client, `GrpcClientFactory(metrics=...)`
+  for every client and the pool it creates, `settings.metrics_registry` for
+  settings objects that carry one. The
+  [shipped collector](#the-shipped-collector) is the usual value.
 - **A layer that cannot work is announced, not silently added.** With
   `tracing_enabled=True` but no `[tracing]` extra, the interceptor is omitted
   and the omission logged.
@@ -122,7 +125,50 @@ metrics hiccup never fails the call it was measuring.
 [channel pool](channels.md#inside-the-pool) whenever it changes:
 `active_channels` counts pooled channels, `idle_targets` counts the distinct
 addresses they lead to (one address can back several channel identities).
-`settings.metrics_registry` feeds this independently of `metrics_enabled`.
+The factory's `metrics=` and `settings.metrics_registry` feed this
+independently of `metrics_enabled`.
+
+### The shipped collector
+
+`GrpcClientMetrics` (`grpc_client_kit.metrics`, the `metrics` extra) is the
+Prometheus implementation of the protocol — and of the two extension
+protocols below, so retries and the breaker are covered by the same instance:
+
+| Metric | Type | Labels |
+| :--- | :--- | :--- |
+| `grpc_client_requests_total` | Counter | `service`, `method`, `rpc_type`, `status`, `grpc_code` |
+| `grpc_client_request_duration_seconds` | Histogram | `service`, `method`, `rpc_type` |
+| `grpc_client_requests_in_flight` | Gauge | `service`, `method`, `rpc_type` |
+| `grpc_client_pool_channels`, `grpc_client_pool_targets` | Gauge | — |
+| `grpc_client_retries_total` | Counter | `service`, `method`, `grpc_code` |
+| `grpc_client_circuit_breaker_state` | Enum (`closed` / `open` / `half-open`) | `method` |
+| `grpc_client_circuit_breaker_rejections_total` | Counter | `method` |
+
+```python
+from grpc_client_kit import GrpcClientFactory
+from grpc_client_kit.metrics import get_grpc_client_metrics
+
+factory = GrpcClientFactory(settings=settings, metrics=get_grpc_client_metrics())
+```
+
+The shape is deliberately `grpc-server-kit`'s: `GrpcServerMetrics` registers
+`grpc_requests_total{service, method, status, grpc_code}` and
+`grpc_request_duration_seconds{service, method}` with the same
+`DEFAULT_GRPC_BUCKETS`, and the client's series carry the same label names in
+the same order with `rpc_type` added after `method`. A dashboard therefore
+joins the caller's and the callee's request counters on the four shared
+labels and compares the two latency histograms bucket for bucket — which is
+the reason the buckets and the label order are fixed here rather than left to
+every service. `prefix="myapp"` puts a prefix in front of every name.
+
+Prometheus registers a metric name once per registry, so a second
+`GrpcClientMetrics()` on the default registry raises `ValueError` — what a
+test suite runs into when it rebuilds a container per test.
+`get_grpc_client_metrics(prefix=None, buckets=None)` caches one instance per
+prefix and hands it back on every later call; it raises `ValueError` when the
+same prefix is asked for with different `buckets`, since silently keeping the
+old ones would record latencies into the wrong bounds. A test that wants
+isolation instead passes `GrpcClientMetrics(registry=CollectorRegistry())`.
 
 ### Opting into retry and breaker visibility
 

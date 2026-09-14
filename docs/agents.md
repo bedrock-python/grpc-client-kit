@@ -164,7 +164,7 @@ Everything below is importable from `grpc_client_kit` unless a row says otherwis
 | `ChannelPool` | `(max_channels_per_target=1, idle_timeout=300.0, health_checker=None, metrics=None)` | `max_channels_per_target <= 0` raises `ValueError` |
 | `GrpcClientConfig` | `(target=None, insecure=False, credentials=None, options=None, compression=None, connectivity=None)` | mutable dataclass; `insecure=True` with `credentials` raises `ValueError` |
 | `GrpcClient[T]` | `(stub_class, config, pool, balancer=None, interceptors=None, interceptor_factory=None)` | generic in the stub type |
-| `GrpcClientFactory` | `(settings=None, pool=None, shutdown_grace=5.0, ready_timeout=10.0)` | `settings` validated eagerly against `GrpcClientSettingsProtocol` |
+| `GrpcClientFactory` | `(settings=None, pool=None, shutdown_grace=5.0, ready_timeout=10.0, metrics=None)` | `settings` validated eagerly against `GrpcClientSettingsProtocol`; `metrics` is the registry for every client and the owned pool |
 
 | Method | Returns | What it does |
 |---|---|---|
@@ -292,6 +292,30 @@ about the server as a whole; naming a service asks about that service alone.
 | `current_budget()` | the installed budget, or `None` |
 | `DeadlineBudgetProtocol` | `timeout_for_call(call_name, reserve_for_next=0.0)`, `remaining()`, `expired()` — `runtime_checkable`, so any object of that shape works |
 
+### Metrics
+
+The layers record through `GrpcClientMetricsProtocol` — `record_request(service, method,
+rpc_type, status, grpc_code, duration)`, `record_inflight_delta(service, method, rpc_type, delta)`,
+`record_pool_stats(active_channels, idle_targets)` — and, when the registry also implements them,
+`RetryMetricsProtocol.record_retry(service, method, attempt, grpc_code)` and
+`CircuitBreakerMetricsProtocol.record_circuit_state(method, state)` /
+`record_circuit_rejection(method)`. The registry reaches the factory nearest-wins:
+`create_client(metrics=)`, then `GrpcClientFactory(metrics=)`, then `settings.metrics_registry`.
+
+`grpc_client_kit.metrics` (the `metrics` extra) ships the Prometheus implementation of all three:
+
+| Name | What it is |
+|---|---|
+| `GrpcClientMetrics(prefix=None, buckets=DEFAULT_GRPC_BUCKETS, registry=None)` | `grpc_client_requests_total{service, method, rpc_type, status, grpc_code}`, `grpc_client_request_duration_seconds{service, method, rpc_type}`, `grpc_client_requests_in_flight{service, method, rpc_type}`, `grpc_client_pool_channels`, `grpc_client_pool_targets`, `grpc_client_retries_total{service, method, grpc_code}`, `grpc_client_circuit_breaker_state{method}` (an Enum: `closed` / `open` / `half-open`), `grpc_client_circuit_breaker_rejections_total{method}` |
+| `get_grpc_client_metrics(prefix=None, buckets=None)` | the one instance per prefix on the default registry; `ValueError` for the same prefix with other buckets |
+| `DEFAULT_GRPC_BUCKETS` | `(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)` — grpc-server-kit's |
+
+The label names, their order and the buckets are grpc-server-kit's `GrpcServerMetrics` with
+`rpc_type` added after `method`, so client and server series join on `service`, `method`,
+`status` and `grpc_code`. A second `GrpcClientMetrics()` on the default registry raises
+`ValueError` (Prometheus registers a name once); use the getter, or `registry=` a fresh
+`CollectorRegistry()` in tests.
+
 ### Protocols and helpers
 
 Settings and collaborator protocols, all `runtime_checkable` and all exported:
@@ -316,6 +340,7 @@ named beside them:
 | `validate_target`, `MIN_PORT`, `MAX_PORT` | `grpc_client_kit.validation` |
 | `create_aio_channel` | `grpc_client_kit.utils` |
 | `BaseGrpcClientSettings`, `BaseConnectivitySettings`, `BaseChannelPoolSettings`, `BaseTimeoutSettings`, `BaseRetrySettings`, `BaseCircuitBreakerSettings`, `BaseWaitForReadySettings`, `BaseDeadlineBudgetSettings`, `BaseLoadBalancerSettings`, `BaseHealthCheckerSettings` | `grpc_client_kit.settings` (needs `[settings]`) |
+| `GrpcClientMetrics`, `get_grpc_client_metrics`, `DEFAULT_GRPC_BUCKETS` | `grpc_client_kit.metrics` (needs `[metrics]`) |
 
 `ChannelWrapper` and `chain_token` in `grpc_client_kit.channel`, and `MethodCircuitState` in
 `grpc_client_kit.interceptors.circuit_breaker`, are internals left out of the public surface on
@@ -352,7 +377,9 @@ the environment on its own; nest one `BaseGrpcClientSettings` per upstream under
 `BaseSettings` with `env_nested_delimiter="__"` (`USERS_GRPC__RETRY__MAX_ATTEMPTS=5`). Every
 section that mirrors a dataclass has `to_config()` returning it, and
 `BaseGrpcClientSettings.to_config(credentials=None)` returns `GrpcClientConfig`. Runtime objects
-— credentials, registries, `on_retry` — have no field: hand them in where the config is built.
+— credentials, registries, `on_retry` — have no field: credentials go to `to_config(credentials=)`,
+a registry to `GrpcClientFactory(metrics=)`, the rest onto the configs a hand-built chain is built
+from.
 By default `pool` and `timeout` (10 s) are present and every other block is `None`; compression,
 status codes and the log level are written by name (`gzip`, `UNAVAILABLE`, `DEBUG`).
 
@@ -455,9 +482,9 @@ status codes and the log level are written by name (`gzip`, `UNAVAILABLE`, `DEBU
     ImportError instead of returning `False`**, and so does `getattr` with a default; probe with
     `importlib.util.find_spec("grpc_health")` or catch the ImportError. Tracing, metrics and the
     deadline budget layers are left out of the chain, with a log line, when their extra is
-    absent — the chain still builds and the calls still run. `grpc_client_kit.settings` is the
-    one module that imports its extra at import time: without `[settings]`, importing it raises
-    `ImportError` naming the extra.
+    absent — the chain still builds and the calls still run. `grpc_client_kit.settings` and
+    `grpc_client_kit.metrics` import their extra at import time: without `[settings]` or
+    `[metrics]`, importing the module raises `ImportError` naming the extra.
 21. **There is no sync API and no thread safety.** Everything here assumes one event loop.
 
 ## Common mistakes

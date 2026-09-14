@@ -281,6 +281,7 @@ names the extra to install.
 | `deadline` + `interceptors.deadline` | The request budget in a contextvar, and the layer that trims every call to it | `deadline` |
 | `interceptors.tracing` | OpenTelemetry CLIENT spans and `traceparent` injection | `tracing` |
 | `interceptors.metrics` | Counters, latency histograms and an in-flight gauge | core¹ |
+| `metrics.GrpcClientMetrics` | The Prometheus collector for them, shaped to join `grpc-server-kit`'s series | `metrics` |
 | `health.HealthChecker` | Background `grpc.health.v1` probing with per-target backoff | `health` |
 | `protocols` / `validation` / `utils` | Settings seams, target validation, channel and metadata helpers | core |
 
@@ -293,7 +294,7 @@ with any backend you pass. The `[metrics]` extra only supplies the usual one.
 | :--- | :--- | :--- |
 | `health` | `grpcio-health-checking` | `HealthChecker`, health-aware balancing and pooling |
 | `tracing` | `opentelemetry-api` | `AsyncClientTracingInterceptor` (a pass-through without it) |
-| `metrics` | `prometheus-client` | the default metrics backend; a custom registry needs no extra |
+| `metrics` | `prometheus-client` | `GrpcClientMetrics`, the Prometheus collector; a custom registry needs no extra |
 | `deadline` | `deadline-budget` | `AsyncDeadlineBudgetInterceptor` (the layer is skipped without it) |
 | `settings` | `pydantic` | `BaseGrpcClientSettings` and the section models |
 | `observability` | `metrics` + `tracing` | both of the above |
