@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/bedrock-python/grpc-client-kit/compare/grpc-client-kit-v0.1.2...grpc-client-kit-v0.2.0) (2026-09-14)
+
+
+### Features
+
+* settings models for the environment, mirroring the dataclasses ([edffb5f](https://github.com/bedrock-python/grpc-client-kit/commit/edffb5fdcf934cecd5788a99e37064133383d9cd))
+
 ## [0.1.2](https://github.com/bedrock-python/grpc-client-kit/compare/grpc-client-kit-v0.1.1...grpc-client-kit-v0.1.2) (2026-09-07)
 
 
