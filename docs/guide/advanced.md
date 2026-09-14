@@ -56,5 +56,6 @@ The pool is application-scoped, the factory too, and clients are cheap enough
 to be request-scoped. `grpc_client_kit.dishka` (the `dishka` extra) ships the
 providers that own that lifecycle — resolve `GrpcClientFactory`, and closing
 the container closes the pool — with one Dishka component per upstream when a
-service has several. See [Dependency injection](dependency-injection.md),
-which also spells the two `async with` blocks out for any other container.
+service has several, and one pool for all of them when they should share it.
+See [Dependency injection](dependency-injection.md), which also spells the
+two `async with` blocks out for any other container.

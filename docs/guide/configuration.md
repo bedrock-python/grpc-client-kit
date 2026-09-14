@@ -214,7 +214,10 @@ USERS_GRPC__SUCCESS_LOG_LEVEL=DEBUG
 
 A variable reaches exactly one section, through its prefix; a bare `TARGET`
 or `MAX_ATTEMPTS` in the pod reaches nothing, because no section scrapes the
-environment by itself. A block that defaults to `None` — `retry`,
+environment by itself. A pool several upstreams share is a section of its
+own — `grpc_pool: BaseChannelPoolSettings` next to them, `GRPC_POOL__*` —
+handed to [the pool provider](dependency-injection.md#one-pool-for-several-upstreams)
+rather than read from any one upstream. A block that defaults to `None` — `retry`,
 `circuit_breaker`, `wait_for_ready`, `deadline_budget`, `balancer`,
 `health_checker`, `connectivity` — comes into being the moment one of its
 variables is set; `pool` and `timeout` are present by default, and

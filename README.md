@@ -284,7 +284,7 @@ names the extra to install.
 | `interceptors.metrics` | Counters, latency histograms and an in-flight gauge | core¹ |
 | `metrics.GrpcClientMetrics` | The Prometheus collector for them, shaped to join `grpc-server-kit`'s series | `metrics` |
 | `health.HealthChecker` | Background `grpc.health.v1` probing with per-target backoff | `health` |
-| `dishka.*` | Dishka providers owning the factory's lifecycle, one component per upstream | `dishka` |
+| `dishka.*` | Dishka providers owning the factory's lifecycle, one component per upstream, one pool shared by several | `dishka` |
 | `protocols` / `validation` / `utils` | Settings seams, target validation, channel and metadata helpers | core |
 
 ¹ The metrics interceptor records through `GrpcClientMetricsProtocol` and works
@@ -299,7 +299,7 @@ with any backend you pass. The `[metrics]` extra only supplies the usual one.
 | `metrics` | `prometheus-client` | `GrpcClientMetrics`, the Prometheus collector; a custom registry needs no extra |
 | `deadline` | `deadline-budget` | `AsyncDeadlineBudgetInterceptor` (the layer is skipped without it) |
 | `settings` | `pydantic` | `BaseGrpcClientSettings` and the section models |
-| `dishka` | `dishka` | `grpc_client_providers` and the three providers behind it |
+| `dishka` | `dishka` | `grpc_client_providers`, the three providers behind it, and the pool provider several upstreams share |
 | `observability` | `metrics` + `tracing` | both of the above |
 | `all` | `deadline` + `dishka` + `health` + `metrics` + `settings` + `tracing` | everything |
 
@@ -335,7 +335,7 @@ Full documentation at [bedrock-python.github.io/grpc-client-kit](https://bedrock
 | [Load balancing](https://bedrock-python.github.io/grpc-client-kit/guide/load-balancing/) | round-robin, random and weighted selection with health filtering |
 | [Health](https://bedrock-python.github.io/grpc-client-kit/guide/health/) | `grpc.health.v1` probing, per-target backoff and cold starts |
 | [Observability](https://bedrock-python.github.io/grpc-client-kit/guide/observability/) | log records, CLIENT spans and the metrics an RPC emits |
-| [Dependency injection](https://bedrock-python.github.io/grpc-client-kit/guide/dependency-injection/) | the Dishka providers, what they own, and one component per upstream |
+| [Dependency injection](https://bedrock-python.github.io/grpc-client-kit/guide/dependency-injection/) | the Dishka providers, what they own, one component per upstream, one pool shared by several |
 | [Advanced](https://bedrock-python.github.io/grpc-client-kit/guide/advanced/) | interceptors that re-issue calls, target validation and ownership |
 | [API reference](https://bedrock-python.github.io/grpc-client-kit/reference/) | generated from the source |
 | [For AI agents](https://bedrock-python.github.io/grpc-client-kit/agents/) | the whole API surface, the rules that break code when broken and a map of the rest, on one page to hand to a coding assistant |

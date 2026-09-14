@@ -227,7 +227,9 @@ rather than handed out — a channel the pool no longer tracks would leak past
 shutdown.
 
 A factory handed an existing pool (`GrpcClientFactory(pool=pool)`) borrows it
-and never closes it: whoever created the pool closes it. And a factory used
+and never closes it: whoever created the pool closes it — in a Dishka
+container, [the pool provider](dependency-injection.md#one-pool-for-several-upstreams),
+once, after the factories that borrowed it. And a factory used
 without `async with` never starts its health checker — `create_client` warns
 about exactly that, because the resulting client would route traffic by
 unverified health data.

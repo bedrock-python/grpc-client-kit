@@ -325,15 +325,22 @@ The label names, their order and the buckets are grpc-server-kit's `GrpcServerMe
 |---|---|---|
 | `GrpcClientSettingsProvider(settings, *, component=None)` | `GrpcClientSettingsProtocol` | holds the settings object; `BaseGrpcClientSettings` or anything structural |
 | `PrometheusGrpcClientMetricsProvider(*, prefix=None, component=None)` | `GrpcClientMetricsProtocol \| None` | `get_grpc_client_metrics(prefix)` when `settings.metrics_enabled`, else `None`; `None` with a warning without `[metrics]` |
-| `AsyncGrpcClientProvider(*, shutdown_grace=5.0, ready_timeout=10.0, component=None)` | `GrpcClientFactory` | APP scope, async generator: `async with GrpcClientFactory(settings, metrics=...)` entered on first resolution, left on `container.close()` |
-| `grpc_client_providers(settings, *, component=None, metrics_prefix=None, shutdown_grace=5.0, ready_timeout=10.0)` | `tuple[Provider, ...]` | the three above, for `make_async_container(*grpc_client_providers(settings))` |
+| `AsyncGrpcClientProvider(*, shutdown_grace=5.0, ready_timeout=10.0, shared_pool=False, component=None)` | `GrpcClientFactory` | APP scope, async generator: `async with GrpcClientFactory(settings, metrics=...)` entered on first resolution, left on `container.close()`; `shared_pool=True` borrows the default component's `ChannelPool` (`FromComponent("")`) instead of building one |
+| `AsyncChannelPoolProvider(settings=None, *, metrics=None, shutdown_grace=5.0, component=None)` | `ChannelPool` | APP scope, async generator: the pool shared upstreams borrow, sized by a `ChannelPoolSettingsProtocol`, `close_all(grace=shutdown_grace)` on `container.close()`; `metrics` is handed in, not requested |
+| `grpc_client_providers(settings, *, component=None, metrics_prefix=None, shutdown_grace=5.0, ready_timeout=10.0, shared_pool=False)` | `tuple[Provider, ...]` | the first three above, for `make_async_container(*grpc_client_providers(settings))` |
 
 The factory provider requests the settings and the registry through their protocols, so a
 container with `AsyncGrpcClientProvider` and no provider of `GrpcClientMetricsProtocol | None`
 is refused when it is built. Several upstreams are several Dishka components: one bundle per
 upstream with `component="users"`, resolved with `container.get(GrpcClientFactory,
 component="users")` or `Annotated[GrpcClientFactory, FromComponent("users")]`; each component
-resolves its own settings, and all of them hand out the one cached collector.
+resolves its own settings, and all of them hand out the one cached collector. One pool for all
+of them is `AsyncChannelPoolProvider(settings.grpc_pool, metrics=get_grpc_client_metrics())` in
+the default component and `shared_pool=True` on every bundle: the factories borrow it, the
+container drains it once, after them, with the pool provider's grace (the bundle's
+`shutdown_grace` then applies to nothing), and each upstream keeps its own settings and its own
+health checker. A `shared_pool=True` bundle with no `ChannelPool` in the default component is
+refused at build.
 
 ### Protocols and helpers
 
@@ -360,7 +367,7 @@ named beside them:
 | `create_aio_channel` | `grpc_client_kit.utils` |
 | `BaseGrpcClientSettings`, `BaseConnectivitySettings`, `BaseChannelPoolSettings`, `BaseTimeoutSettings`, `BaseRetrySettings`, `BaseCircuitBreakerSettings`, `BaseWaitForReadySettings`, `BaseDeadlineBudgetSettings`, `BaseLoadBalancerSettings`, `BaseHealthCheckerSettings` | `grpc_client_kit.settings` (needs `[settings]`) |
 | `GrpcClientMetrics`, `get_grpc_client_metrics`, `DEFAULT_GRPC_BUCKETS` | `grpc_client_kit.metrics` (needs `[metrics]`) |
-| `AsyncGrpcClientProvider`, `GrpcClientSettingsProvider`, `PrometheusGrpcClientMetricsProvider`, `grpc_client_providers` | `grpc_client_kit.dishka` (needs `[dishka]`) |
+| `AsyncChannelPoolProvider`, `AsyncGrpcClientProvider`, `GrpcClientSettingsProvider`, `PrometheusGrpcClientMetricsProvider`, `grpc_client_providers` | `grpc_client_kit.dishka` (needs `[dishka]`) |
 
 `ChannelWrapper` and `chain_token` in `grpc_client_kit.channel`, and `MethodCircuitState` in
 `grpc_client_kit.interceptors.circuit_breaker`, are internals left out of the public surface on
@@ -633,7 +640,7 @@ Fetch a page when the task is the one named beside it.
 | [Native gRPC or the kit?](guide/native-vs-kit.md) | deciding which layer owns LB, retries, idling and health |
 | [Health checking](guide/health.md) | the probe loop, cold starts, backoff, status callbacks |
 | [Observability](guide/observability.md) | what a log record, a metric sample and a span actually contain, and the shipped Prometheus collector |
-| [Dependency injection](guide/dependency-injection.md) | the Dishka providers, what resolving and closing does, one component per upstream |
+| [Dependency injection](guide/dependency-injection.md) | the Dishka providers, what resolving and closing does, one component per upstream, one pool shared by several |
 | [Advanced](guide/advanced.md) | target validation, plain `grpc.aio` interceptors |
 | [API reference](reference/index.md) | an exact signature, field or docstring — HTML only, see above |
 | [Changelog](changelog.md) | what changed between versions |
