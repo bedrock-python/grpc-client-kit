@@ -1,8 +1,8 @@
 """Dishka providers owning the client lifecycle (``[dishka]`` extra).
 
 What an application otherwise writes by hand — build the factory from the settings, start the health
-checker with the container, close the pool with it — lives here as three providers, one per thing a
-container hands out, and a bundle registering all three::
+checker with the container, close the pool with it — lives here as providers, one per thing a
+container hands out, and a bundle registering the three of one upstream::
 
     from dishka import make_async_container
 
@@ -23,6 +23,8 @@ container hands out, and a bundle registering all three::
   the kit's own spelling of "no metrics", which the factory leaves the layer out for.
 - `AsyncGrpcClientProvider` provides `factory.GrpcClientFactory` in APP scope from an async generator,
   entered when first resolved and left when the container closes.
+- `AsyncChannelPoolProvider` provides `channel.ChannelPool` the same way, for the upstreams that share
+  one; a factory with ``shared_pool=True`` borrows it instead of building its own.
 
 Several upstreams in one container are Dishka components: every provider takes ``component=``, so
 one bundle per upstream, each in its own component, is one factory per upstream::
@@ -38,6 +40,16 @@ own three providers; the collector they hand out is the same instance, cached pe
 series are told apart by ``service``. A single upstream uses the default component and needs none of
 this.
 
+One pool for all of them is `AsyncChannelPoolProvider` in the default component and ``shared_pool=True``
+on every bundle: each factory then borrows that `channel.ChannelPool` instead of building its own, and
+the container closes it once, after the factories, with the pool provider's grace::
+
+    container = make_async_container(
+        AsyncChannelPoolProvider(settings.grpc_pool, metrics=get_grpc_client_metrics()),
+        *grpc_client_providers(settings.users_grpc, component="users", shared_pool=True),
+        *grpc_client_providers(settings.orders_grpc, component="orders", shared_pool=True),
+    )
+
 This module needs the ``dishka`` extra (``grpc-client-kit[dishka]``); importing it without raises an
 ``ImportError`` naming the extra.
 """
@@ -46,15 +58,17 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
+from typing import Annotated
 
 try:
-    from dishka import Provider, Scope, provide
+    from dishka import DEFAULT_COMPONENT, FromComponent, Provider, Scope, provide
 except ImportError as exc:
     raise ImportError("Install grpc-client-kit[dishka] (dishka) to use the Dishka providers") from exc
 
+from .channel import ChannelPool
 from .factory import GrpcClientFactory
 from .interceptors.metrics import HAS_METRICS
-from .protocols import GrpcClientMetricsProtocol, GrpcClientSettingsProtocol
+from .protocols import ChannelPoolSettingsProtocol, GrpcClientMetricsProtocol, GrpcClientSettingsProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +122,54 @@ class PrometheusGrpcClientMetricsProvider(Provider):
         return get_grpc_client_metrics(self._prefix)
 
 
+class AsyncChannelPoolProvider(Provider):
+    """Provide one `channel.ChannelPool` in APP scope, built on first use and drained with the container.
+
+    The pool several upstreams share: registered in the default component, it is what every
+    `AsyncGrpcClientProvider` with ``shared_pool=True`` borrows, and the container closes it once —
+    ``close_all(grace=shutdown_grace)``, after the factories that used it have left. Sized from a
+    `protocols.ChannelPoolSettingsProtocol` — `settings.BaseChannelPoolSettings` nested at the top of
+    the service's settings is one deployment-wide section — and at the pool's own defaults without one.
+
+    ``metrics`` is the registry the pool statistics are recorded into. It is handed in here, the way
+    `factory.GrpcClientFactory` takes it, rather than requested from the container: a container with
+    one component per upstream has a registry per component and none in the default one, so there is
+    no single seam for the pool to ask. `metrics.get_grpc_client_metrics` returns the instance the
+    bundles hand out.
+    """
+
+    scope = Scope.APP
+
+    def __init__(
+        self,
+        settings: ChannelPoolSettingsProtocol | None = None,
+        *,
+        metrics: GrpcClientMetricsProtocol | None = None,
+        shutdown_grace: float | None = 5.0,
+        component: str | None = None,
+    ) -> None:
+        super().__init__(component=component)
+        self._settings = settings
+        self._metrics = metrics
+        self._shutdown_grace = shutdown_grace
+
+    @provide
+    async def pool(self) -> AsyncIterator[ChannelPool]:
+        """Build the pool from the settings and the registry, and drain it with the container."""
+        if self._settings is not None:
+            pool = ChannelPool(
+                max_channels_per_target=self._settings.max_channels_per_target,
+                idle_timeout=self._settings.idle_timeout,
+                metrics=self._metrics,
+            )
+        else:
+            pool = ChannelPool(metrics=self._metrics)
+        try:
+            yield pool
+        finally:
+            await pool.close_all(grace=self._shutdown_grace)
+
+
 class AsyncGrpcClientProvider(Provider):
     """Provide `factory.GrpcClientFactory` in APP scope, entered on first use and closed with the container.
 
@@ -116,6 +178,13 @@ class AsyncGrpcClientProvider(Provider):
     the pool, giving in-flight RPCs ``shutdown_grace`` — exactly what ``async with factory`` does.
     Clients come from the factory as usual, ``factory.create_client(UserStub)``, and are cheap enough
     to be request-scoped.
+
+    With ``shared_pool=True`` the factory borrows the `channel.ChannelPool` of the default component —
+    an `AsyncChannelPoolProvider` there, or anything providing ``ChannelPool`` — instead of building
+    one, and owns nothing but its health checker: closing the container still stops the checker,
+    while the pool is closed by whoever provided it, once, after every factory that borrowed it.
+    ``shutdown_grace`` then has nothing to apply to; the pool provider carries its own. A container
+    with such a factory and no ``ChannelPool`` in the default component is refused when it is built.
     """
 
     scope = Scope.APP
@@ -125,13 +194,16 @@ class AsyncGrpcClientProvider(Provider):
         *,
         shutdown_grace: float | None = 5.0,
         ready_timeout: float | None = 10.0,
+        shared_pool: bool = False,
         component: str | None = None,
     ) -> None:
         super().__init__(component=component)
         self._shutdown_grace = shutdown_grace
         self._ready_timeout = ready_timeout
+        # One key, two sources, chosen here: a Dishka dependency cannot be optional, so a factory that
+        # asked for the pool would refuse every container without one.
+        self.provide(self.shared_factory if shared_pool else self.factory)
 
-    @provide
     async def factory(
         self,
         settings: GrpcClientSettingsProtocol,
@@ -146,6 +218,21 @@ class AsyncGrpcClientProvider(Provider):
         ) as factory:
             yield factory
 
+    async def shared_factory(
+        self,
+        settings: GrpcClientSettingsProtocol,
+        metrics: GrpcClientMetricsProtocol | None,
+        pool: Annotated[ChannelPool, FromComponent(DEFAULT_COMPONENT)],
+    ) -> AsyncIterator[GrpcClientFactory]:
+        """Build the factory on the default component's pool, which it borrows and never closes."""
+        async with GrpcClientFactory(
+            settings=settings,
+            pool=pool,
+            ready_timeout=self._ready_timeout,
+            metrics=metrics,
+        ) as factory:
+            yield factory
+
 
 def grpc_client_providers(
     settings: GrpcClientSettingsProtocol,
@@ -154,6 +241,7 @@ def grpc_client_providers(
     metrics_prefix: str | None = None,
     shutdown_grace: float | None = 5.0,
     ready_timeout: float | None = 10.0,
+    shared_pool: bool = False,
 ) -> tuple[Provider, ...]:
     """Return the three providers of one upstream, for one-line registration.
 
@@ -162,8 +250,11 @@ def grpc_client_providers(
         component: The Dishka component to register the providers in — one per upstream when a
             container serves several, the default component otherwise.
         metrics_prefix: Prefix for the Prometheus metric names.
-        shutdown_grace: Seconds in-flight RPCs get to finish when the container closes.
+        shutdown_grace: Seconds in-flight RPCs get to finish when the container closes; the pool
+            provider's own grace applies instead with ``shared_pool``.
         ready_timeout: Seconds the factory waits for the first health check pass when resolved.
+        shared_pool: Borrow the ``ChannelPool`` of the default component — an `AsyncChannelPoolProvider`
+            registered there — instead of building one for this upstream.
 
     Returns:
         The providers, to unpack into ``make_async_container``.
@@ -171,11 +262,14 @@ def grpc_client_providers(
     return (
         GrpcClientSettingsProvider(settings, component=component),
         PrometheusGrpcClientMetricsProvider(prefix=metrics_prefix, component=component),
-        AsyncGrpcClientProvider(shutdown_grace=shutdown_grace, ready_timeout=ready_timeout, component=component),
+        AsyncGrpcClientProvider(
+            shutdown_grace=shutdown_grace, ready_timeout=ready_timeout, shared_pool=shared_pool, component=component
+        ),
     )
 
 
 __all__ = [
+    "AsyncChannelPoolProvider",
     "AsyncGrpcClientProvider",
     "GrpcClientSettingsProvider",
     "PrometheusGrpcClientMetricsProvider",
