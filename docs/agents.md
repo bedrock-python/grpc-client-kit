@@ -8,7 +8,7 @@
 |---|---|
 | Package | `grpc-client-kit` on PyPI, import root `grpc_client_kit` |
 | Requires | Python 3.12+, `grpcio` 1.78+ — and nothing else on a bare install |
-| Install | `pip install grpc-client-kit` · extras: `health`, `tracing`, `metrics`, `deadline`, `observability` (= `metrics` + `tracing`), `all` |
+| Install | `pip install grpc-client-kit` · extras: `health`, `tracing`, `metrics`, `deadline`, `settings`, `observability` (= `metrics` + `tracing`), `all` |
 | Async | All of it. Every entry point is `grpc.aio`, and the pool, the balancers and the checker are coroutines. |
 | Sync | None. There is no sync mirror and no thread-safe surface; this kit is for an event loop. |
 | Source | <https://github.com/bedrock-python/grpc-client-kit> |
@@ -315,6 +315,7 @@ named beside them:
 | `AsyncPassiveOutlierInterceptor`, `DEFAULT_QUARANTINE_SECONDS` | `grpc_client_kit.interceptors.outlier` |
 | `validate_target`, `MIN_PORT`, `MAX_PORT` | `grpc_client_kit.validation` |
 | `create_aio_channel` | `grpc_client_kit.utils` |
+| `BaseGrpcClientSettings`, `ConnectivitySettings`, `ChannelPoolSettings`, `TimeoutSettings`, `RetrySettings`, `CircuitBreakerSettings`, `WaitForReadySettings`, `DeadlineBudgetSettings`, `LoadBalancerSettings`, `HealthCheckerSettings` | `grpc_client_kit.settings` (needs `[settings]`) |
 
 `ChannelWrapper` and `chain_token` in `grpc_client_kit.channel`, and `MethodCircuitState` in
 `grpc_client_kit.interceptors.circuit_breaker`, are internals left out of the public surface on
@@ -331,16 +332,29 @@ a plain class with nested classes all work. **Required** (`GrpcClientSettingsPro
 raises `TypeError` naming it, at construction.
 
 Read with `getattr` and therefore optional: `credentials`, `options`, `compression`,
-`connectivity`, `metrics_registry`, `sensitive_headers`, `enable_method_label`,
-`success_log_level`, plus two whole blocks — `wait_for_ready` (`default`, `per_method`,
-`require_deadline`) and `deadline_budget` (`reserve_for_next`). The `retry` block's `jitter`,
+`connectivity` (a `ConnectivityConfig`, or any block with its fields), `metrics_registry`,
+`sensitive_headers`, `sensitive_methods`, `sensitive_patterns`, `log_request_payload`,
+`log_response_payload`, `enable_method_label`, `success_log_level`, plus two whole blocks —
+`wait_for_ready` (`default`, `per_method`, `require_deadline`) and `deadline_budget`
+(`reserve_for_next`). The `timeout` block's `per_method`, the `retry` block's `jitter`,
 `retryable_codes`, `retry_streaming`, `idempotent_methods` and `on_retry`, the
 `circuit_breaker` block's `max_methods` and the `health_checker` block's `service` are picked
 up the same way. Because they are read with `getattr`, a **typo in an optional name silently
 yields the default** — pydantic users should set `extra="forbid"`.
 
-Per-method budgets are the one thing settings cannot express: `timeout` carries only
-`default`. That needs a hand-built chain.
+The shipped shape is `grpc_client_kit.settings.BaseGrpcClientSettings` (the `settings` extra):
+a plain pydantic `BaseModel` satisfying the protocol and carrying every optional block above,
+with the kit's own defaults and bounds and `extra="forbid"`. Its sections —
+`ConnectivitySettings`, `ChannelPoolSettings`, `TimeoutSettings`, `RetrySettings`,
+`CircuitBreakerSettings`, `WaitForReadySettings`, `DeadlineBudgetSettings`,
+`LoadBalancerSettings`, `HealthCheckerSettings` — are `BaseModel`s too, so none of them reads
+the environment on its own; nest one `BaseGrpcClientSettings` per upstream under the service's
+`BaseSettings` with `env_nested_delimiter="__"` (`USERS_GRPC__RETRY__MAX_ATTEMPTS=5`). Every
+section that mirrors a dataclass has `to_config()` returning it, and
+`BaseGrpcClientSettings.to_config(credentials=None)` returns `GrpcClientConfig`. Runtime objects
+— credentials, registries, `on_retry` — have no field: hand them in where the config is built.
+By default `pool` and `timeout` (10 s) are present and every other block is `None`; compression,
+status codes and the log level are written by name (`gzip`, `UNAVAILABLE`, `DEBUG`).
 
 ## Rules that hold or break the code
 
@@ -441,7 +455,9 @@ Per-method budgets are the one thing settings cannot express: `timeout` carries 
     ImportError instead of returning `False`**, and so does `getattr` with a default; probe with
     `importlib.util.find_spec("grpc_health")` or catch the ImportError. Tracing, metrics and the
     deadline budget layers are left out of the chain, with a log line, when their extra is
-    absent — the chain still builds and the calls still run.
+    absent — the chain still builds and the calls still run. `grpc_client_kit.settings` is the
+    one module that imports its extra at import time: without `[settings]`, importing it raises
+    `ImportError` naming the extra.
 21. **There is no sync API and no thread safety.** Everything here assumes one event loop.
 
 ## Common mistakes
@@ -547,7 +563,9 @@ Configuration mistakes raise plain `ValueError` at construction — a malformed 
 `insecure=True` with credentials, both a `balancer` and a `config.target`, both `interceptors`
 and an `interceptor_factory`, a negative backoff, a non-positive `fail_threshold`,
 contradictory reconnect bounds. A settings object missing a required field raises `TypeError`
-naming the field. `HealthChecker` without the `health` extra raises `ImportError` naming the
+naming the field. The shipped settings models raise pydantic's `ValidationError` at load — an
+out-of-range value, an unknown status code or compression name, `target` next to `targets`, a
+misspelled field. `HealthChecker` without the `health` extra raises `ImportError` naming the
 extra.
 
 ## Documentation map
@@ -558,7 +576,7 @@ Fetch a page when the task is the one named beside it.
 |---|---|
 | [Overview](index.md) | placing the library at all: what it is, the extras, a first call |
 | [Quick start](guide/quickstart.md) | writing the first integration: three objects, the factory, the two error families |
-| [Configuration](guide/configuration.md) | building `GrpcClientConfig` or a settings object, and picking extras |
+| [Configuration](guide/configuration.md) | building `GrpcClientConfig` or a settings object, loading one from the environment, and picking extras |
 | [Channels & pooling](guide/channels.md) | channel identity, keepalive and reconnect tuning, pool limits, who closes what |
 | [Interceptors](guide/interceptors.md) | the chain order, how it reaches the channel, writing your own layer |
 | [Resilience](guide/resilience.md) | call budgets, wait-for-ready, retry safety, sizing the breaker against the retries |

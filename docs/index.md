@@ -17,6 +17,7 @@ pip install "grpc-client-kit[health]"             # + grpc.health.v1 monitoring
 pip install "grpc-client-kit[metrics,tracing]"    # + Prometheus + OpenTelemetry
 pip install "grpc-client-kit[observability]"      # + metrics and tracing together
 pip install "grpc-client-kit[deadline]"           # + request budget propagation
+pip install "grpc-client-kit[settings]"           # + pydantic settings models
 pip install "grpc-client-kit[all]"                # everything
 ```
 

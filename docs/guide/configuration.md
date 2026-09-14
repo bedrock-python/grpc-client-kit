@@ -129,16 +129,22 @@ class UpstreamSettings:
         timeout = 5.0
 ```
 
-The blocks a settings object can carry are deliberately narrower than the
-kit's own config dataclasses: `timeout` only exposes `default`, and the
-retry block's `jitter`, `retryable_codes`, `retry_streaming`,
-`idempotent_methods` and `on_retry` are picked up only when it happens to
-define them. Two more optional blocks join on the same duck-typed terms — a
-`wait_for_ready` block (`default`, `per_method`, `require_deadline`) and a
-`deadline_budget` block (`reserve_for_next`) — so every one of the
-[five resilience layers](resilience.md) is reachable from settings alone.
-Anything finer — per-method budgets above all — still needs a hand-built
-chain, as described in [Interceptors](interceptors.md#the-chain):
+The protocols name only what a settings object must carry; the rest of each
+block is picked up when it happens to be there. `timeout` requires `default`
+and reads `per_method` too; the retry block's `jitter`, `retryable_codes`,
+`retry_streaming`, `idempotent_methods` and `on_retry` are optional in the
+same way, as are the `circuit_breaker` block's `max_methods` and the
+`health_checker` block's `service`. Two more optional blocks join on the same
+duck-typed terms — a `wait_for_ready` block (`default`, `per_method`,
+`require_deadline`) and a `deadline_budget` block (`reserve_for_next`) — so
+every one of the [five resilience layers](resilience.md) is reachable from
+settings alone. The observability layers read `sensitive_headers`,
+`sensitive_methods`, `sensitive_patterns`, `log_request_payload`,
+`log_response_payload`, `enable_method_label` and `success_log_level` off the
+settings object itself, next to the three flags. What still needs a
+hand-built chain, as described in [Interceptors](interceptors.md#the-chain),
+is anything that is an object rather than a value — an `on_retry` callback, a
+registry of your own for one layer, an interceptor in the inner slot:
 
 ```python
 chain = build_interceptors(
@@ -161,7 +167,85 @@ constructed: a missing required field raises `TypeError` naming it. The
 optional blocks stay optional, which also means a **typo** in an optional
 field name silently yields the default — pydantic users should set
 `model_config = ConfigDict(extra="forbid")` on their settings models so typos
-fail at model construction instead.
+fail at model construction instead. The shipped models below do.
+
+## From the environment
+
+`grpc_client_kit.settings` (the `settings` extra, which pulls in pydantic) is
+that settings shape written down once. `BaseGrpcClientSettings` satisfies
+`GrpcClientSettingsProtocol` and carries every optional block the factory
+reads, with the kit's own defaults and bounds, so the factory takes an
+instance as it is. Every class in the module is a plain `BaseModel` — none of
+them reads the environment on its own. Nest one per upstream under your
+service's `BaseSettings` and let that class own the environment:
+
+```python
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from grpc_client_kit import GrpcClientFactory
+from grpc_client_kit.settings import BaseGrpcClientSettings
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_nested_delimiter="__")
+
+    users_grpc: BaseGrpcClientSettings = Field(default_factory=BaseGrpcClientSettings)
+    orders_grpc: BaseGrpcClientSettings = Field(default_factory=BaseGrpcClientSettings)
+
+
+settings = Settings()
+
+async with GrpcClientFactory(settings=settings.users_grpc) as factory:
+    users = factory.create_client(UserStub)
+```
+
+```bash
+USERS_GRPC__TARGET=users.internal:50051
+USERS_GRPC__COMPRESSION=gzip
+USERS_GRPC__CONNECTIVITY__KEEPALIVE_TIME=15
+USERS_GRPC__TIMEOUT__DEFAULT=5
+USERS_GRPC__TIMEOUT__PER_METHOD='{"/users.v1.Users/Export": 60}'
+USERS_GRPC__RETRY__MAX_ATTEMPTS=5
+USERS_GRPC__RETRY__RETRYABLE_CODES='["UNAVAILABLE", "ABORTED"]'
+USERS_GRPC__CIRCUIT_BREAKER__FAIL_THRESHOLD=7
+USERS_GRPC__SUCCESS_LOG_LEVEL=DEBUG
+```
+
+A variable reaches exactly one section, through its prefix; a bare `TARGET`
+or `MAX_ATTEMPTS` in the pod reaches nothing, because no section scrapes the
+environment by itself. A block that defaults to `None` — `retry`,
+`circuit_breaker`, `wait_for_ready`, `deadline_budget`, `balancer`,
+`health_checker`, `connectivity` — comes into being the moment one of its
+variables is set; `pool` and `timeout` are present by default, and
+`TIMEOUT__DEFAULT=0` switches the deadline off. Unknown fields are refused, so
+a misspelled variable fails at load rather than yielding a default.
+
+Values an operator writes: compression and status codes by name (`gzip`,
+`UNAVAILABLE`), the log level by name or number, the strategy as
+`round_robin` / `random` / `weighted`, and dictionaries and lists as JSON.
+
+For a hand-built chain, each section becomes the dataclass it mirrors with
+`to_config()`, and the top-level model becomes the channel config the same
+way — with the one object that cannot come from an environment handed in:
+
+```python
+upstream = settings.users_grpc
+
+config = upstream.to_config(credentials=grpc.ssl_channel_credentials(ca_bytes))
+chain = build_interceptors(
+    timeout=upstream.timeout.to_config(),
+    retry=upstream.retry.to_config(),
+)
+```
+
+Runtime objects — channel credentials, metrics registries, `on_retry` — are
+not settings and have no field in the models: through the factory the
+registry comes from `create_client(metrics=...)`, and a hand-built chain sets
+them on the configs `to_config()` returns. The models mirror the dataclasses
+field for field, defaults included, and the kit's own test suite pins the two
+to each other, so a knob added to `RetryConfig` cannot go missing from
+`RetrySettings`.
 
 ## Optional dependencies
 
@@ -171,8 +255,9 @@ fail at model construction instead.
 | `tracing` | `opentelemetry-api` | `AsyncClientTracingInterceptor` (a pass-through without it) |
 | `metrics` | `prometheus-client` | the default metrics backend; a custom registry needs no extra |
 | `deadline` | `deadline-budget` | [deadline budget propagation](deadlines.md) (the layer is skipped without it) |
+| `settings` | `pydantic` | [`BaseGrpcClientSettings` and the section models](#from-the-environment) |
 | `observability` | `metrics` + `tracing` | both of the above |
-| `all` | `deadline` + `health` + `metrics` + `tracing` | everything |
+| `all` | `deadline` + `health` + `metrics` + `settings` + `tracing` | everything |
 
 `deadline` is deliberately **not** part of `observability`: propagating a
 budget is resilience, not telemetry, and an observability extra should not pull
@@ -181,3 +266,6 @@ in a dependency that changes what calls do.
 `import grpc_client_kit` never requires an extra. `HealthChecker` is the one
 gated export: it is resolved on first attribute access, and without
 `[health]` that access raises an `ImportError` naming the extra to install.
+`grpc_client_kit.settings` is a module rather than an export and imports
+pydantic when it is imported; without `[settings]` that import raises an
+`ImportError` naming the extra.

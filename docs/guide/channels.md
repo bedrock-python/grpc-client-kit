@@ -149,8 +149,10 @@ does not treat as identical.
 
 `GrpcClientFactory` reads `connectivity` with `getattr`, like the other
 optional channel fields ([Configuration](configuration.md#settings-objects)), so
-a settings object carrying one has its channels tuned and one that does not is
-left with gRPC's defaults:
+a settings object carrying one — a `ConnectivityConfig`, or any block with its
+fields, such as `ConnectivitySettings` from the
+[shipped models](configuration.md#from-the-environment) — has its channels
+tuned and one that does not is left with gRPC's defaults:
 
 ```python
 class UpstreamSettings:
