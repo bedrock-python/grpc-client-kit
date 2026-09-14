@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/bedrock-python/grpc-client-kit/compare/grpc-client-kit-v0.2.0...grpc-client-kit-v0.3.0) (2026-09-14)
+
+
+### Features
+
+* Prometheus collector for the metrics protocol and Dishka providers for the client lifecycle ([6dfdb44](https://github.com/bedrock-python/grpc-client-kit/commit/6dfdb44f2f818c6036f465844c96c2151ee511db)), closes [#28](https://github.com/bedrock-python/grpc-client-kit/issues/28)
+
 ## [0.2.0](https://github.com/bedrock-python/grpc-client-kit/compare/grpc-client-kit-v0.1.2...grpc-client-kit-v0.2.0) (2026-09-14)
 
 
