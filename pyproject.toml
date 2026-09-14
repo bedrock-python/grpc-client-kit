@@ -44,11 +44,14 @@ deadline = [
 settings = [
     "pydantic>=2.0.0,<3.0",
 ]
+dishka = [
+    "dishka>=1.4.0,<2.0.0",
+]
 observability = [
     "grpc-client-kit[metrics,tracing]",
 ]
 all = [
-    "grpc-client-kit[deadline,health,metrics,settings,tracing]",
+    "grpc-client-kit[deadline,dishka,health,metrics,settings,tracing]",
 ]
 
 [dependency-groups]

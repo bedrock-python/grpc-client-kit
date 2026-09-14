@@ -236,6 +236,54 @@ def test__factory__metrics_registry_in_settings__also_reaches_the_circuit_breake
     assert breaker._metrics is settings.metrics_registry
 
 
+def test__factory__registry_given_to_the_factory__reaches_every_client_and_the_pool_it_owns() -> None:
+    """The shipped settings models carry no registry, so the factory is where one meets them (#28)."""
+    # Arrange
+    registry = MagicMock()
+    settings = StubClientSettings(circuit_breaker=StubCircuitBreakerSettings())
+
+    # Act
+    with patch("grpc_client_kit.factory.ChannelPool", return_value=make_pool()) as pool_class:
+        factory = GrpcClientFactory(settings=settings, metrics=registry)
+    client: GrpcClient = factory.create_client(make_stub_class("Stub"))
+
+    # Assert
+    assert pool_class.call_args.kwargs["metrics"] is registry
+    assert layers_of(client, "localhost:50051", AsyncClientMetricsInterceptor)[0]._metrics is registry
+    assert layers_of(client, "localhost:50051", AsyncCircuitBreakerInterceptor)[0]._metrics is registry
+
+
+def test__factory__registry_given_to_the_factory__wins_over_the_settings_one_and_loses_to_create_client() -> None:
+    """Per client beats per factory beats per settings; the nearest choice is the one that counts."""
+    # Arrange
+    settings = StubClientSettings(metrics_registry=MagicMock())
+    factory_level = MagicMock()
+    per_client = MagicMock()
+    factory = GrpcClientFactory(settings=settings, metrics=factory_level)
+
+    # Act
+    default_client: GrpcClient = factory.create_client(make_stub_class("Stub"))
+    overridden_client: GrpcClient = factory.create_client(make_stub_class("Stub"), metrics=per_client)
+
+    # Assert
+    assert layers_of(default_client, "localhost:50051", AsyncClientMetricsInterceptor)[0]._metrics is factory_level
+    assert layers_of(overridden_client, "localhost:50051", AsyncClientMetricsInterceptor)[0]._metrics is per_client
+
+
+def test__factory__registry_given_to_the_factory__keeps_chains_cached_per_stub() -> None:
+    """A registry passed per create_client switches chain caching off; one on the factory must not."""
+    # Arrange
+    factory = GrpcClientFactory(settings=StubClientSettings(), metrics=MagicMock())
+    stub_class = make_stub_class("Stub")
+
+    # Act
+    first = factory.create_client(stub_class).interceptors_for("localhost:50051")
+    second = factory.create_client(stub_class).interceptors_for("localhost:50051")
+
+    # Assert
+    assert first is second
+
+
 def test__factory__explicit_service_name__names_the_observability_layers_after_it() -> None:
     """The service name is what the logs and spans of this client will be filed under."""
     # Arrange

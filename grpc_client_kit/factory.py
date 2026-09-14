@@ -98,6 +98,7 @@ class GrpcClientFactory:
         pool: ChannelProviderProtocol | None = None,
         shutdown_grace: float | None = 5.0,
         ready_timeout: float | None = 10.0,
+        metrics: GrpcClientMetricsProtocol | None = None,
     ) -> None:
         """Initialize the factory.
 
@@ -118,6 +119,12 @@ class GrpcClientFactory:
                 that pass every target reads unhealthy, so entering the context without waiting
                 would make the first call of every freshly started pod fail deterministically.
                 ``None`` waits indefinitely; only relevant when health checking is configured.
+            metrics: The registry RPC metrics, retries, breaker state and pool statistics are
+                recorded into: the default for every client this factory creates, and the one
+                the pool it creates reports to. Wins over ``settings.metrics_registry``;
+                `create_client(metrics=...)` wins over it per client. The shipped settings
+                models carry no registry, a registry being a runtime object, so this is where
+                one meets them.
 
         Raises:
             TypeError: If `settings` does not satisfy `GrpcClientSettingsProtocol`. Validated
@@ -135,21 +142,24 @@ class GrpcClientFactory:
         # reuse the same interceptor instances, or every create_client would mint a fresh channel
         # identity and a per-request client pattern would open a connection per request.
         self._chains: dict[tuple[str, str], list[grpc.aio.ClientInterceptor]] = {}
+        # The registry every client and the owned pool default to: the explicit one, else the
+        # settings' own — the shipped settings models carry none, a registry being a runtime object.
+        settings_registry = getattr(settings, "metrics_registry", None) if settings else None
+        self._metrics: GrpcClientMetricsProtocol | None = metrics if metrics is not None else settings_registry
 
         if pool:
             self._pool = pool
         else:
             self._owns_pool = True
-            metrics = getattr(settings, "metrics_registry", None) if settings else None
 
             if settings and settings.pool:
                 self._pool = ChannelPool(
                     max_channels_per_target=settings.pool.max_channels_per_target,
                     idle_timeout=settings.pool.idle_timeout,
-                    metrics=metrics,
+                    metrics=self._metrics,
                 )
             else:
-                self._pool = ChannelPool(metrics=metrics)
+                self._pool = ChannelPool(metrics=self._metrics)
 
         # Build and start HealthChecker if configured and we have targets
         if settings and settings.health_checker and settings.targets:
@@ -252,7 +262,8 @@ class GrpcClientFactory:
             stub_class: The gRPC stub class to instantiate.
             target: Optional target override. If not provided, uses target from settings.
             service_name: Name of the service for observability. Defaults to stub class name.
-            metrics: Optional metrics registry, overriding `settings.metrics_registry`.
+            metrics: Optional metrics registry for this client alone, overriding the factory's
+                ``metrics`` and `settings.metrics_registry`.
             interceptors: Optional list of additional custom interceptors. These instances are
                 shared by every target, unlike the chain the factory builds around them.
 
@@ -353,8 +364,9 @@ class GrpcClientFactory:
     def _resolve_metrics_registry(self, metrics: GrpcClientMetricsProtocol | None) -> GrpcClientMetricsProtocol | None:
         """Pick the registry RPC metrics are recorded into.
 
-        An explicit argument wins over `settings.metrics_registry`, which otherwise only fed pool
-        statistics and left `metrics_enabled` clients recording nothing at all.
+        An explicit argument wins over the factory's default — its own ``metrics`` argument, else
+        `settings.metrics_registry`, which otherwise only fed pool statistics and left
+        `metrics_enabled` clients recording nothing at all.
 
         Args:
             metrics: The registry passed to `create_client`, if any.
@@ -362,13 +374,12 @@ class GrpcClientFactory:
         Returns:
             The registry to use, or None if metrics cannot be recorded.
         """
-        settings_registry = getattr(self._settings, "metrics_registry", None) if self._settings else None
-        registry: GrpcClientMetricsProtocol | None = metrics if metrics is not None else settings_registry
+        registry: GrpcClientMetricsProtocol | None = metrics if metrics is not None else self._metrics
 
         if registry is None and self._settings and self._settings.metrics_enabled:
             logger.warning(
                 "metrics_enabled is set but no metrics registry is available. "
-                "Pass 'metrics=' to create_client() or set 'metrics_registry' in settings; "
+                "Pass 'metrics=' to the factory or to create_client(), or set 'metrics_registry' in settings; "
                 "gRPC client metrics are disabled."
             )
 

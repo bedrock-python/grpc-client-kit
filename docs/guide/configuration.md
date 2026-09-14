@@ -241,8 +241,9 @@ chain = build_interceptors(
 
 Runtime objects — channel credentials, metrics registries, `on_retry` — are
 not settings and have no field in the models: through the factory the
-registry comes from `create_client(metrics=...)`, and a hand-built chain sets
-them on the configs `to_config()` returns. The models mirror the dataclasses
+registry comes from `GrpcClientFactory(metrics=...)` (or per client from
+`create_client(metrics=...)`), and a hand-built chain sets them on the configs
+`to_config()` returns. The models mirror the dataclasses
 field for field, defaults included, and the kit's own test suite pins the two
 to each other, so a knob added to `RetryConfig` cannot go missing from
 `BaseRetrySettings`.
@@ -253,11 +254,12 @@ to each other, so a knob added to `RetryConfig` cannot go missing from
 | :--- | :--- | :--- |
 | `health` | `grpcio-health-checking` | `HealthChecker`, health-aware balancing and pooling |
 | `tracing` | `opentelemetry-api` | `AsyncClientTracingInterceptor` (a pass-through without it) |
-| `metrics` | `prometheus-client` | the default metrics backend; a custom registry needs no extra |
+| `metrics` | `prometheus-client` | [`GrpcClientMetrics`](observability.md#the-shipped-collector), the Prometheus collector; a custom registry needs no extra |
 | `deadline` | `deadline-budget` | [deadline budget propagation](deadlines.md) (the layer is skipped without it) |
 | `settings` | `pydantic` | [`BaseGrpcClientSettings` and the section models](#from-the-environment) |
+| `dishka` | `dishka` | [the providers](dependency-injection.md) owning the factory's lifecycle |
 | `observability` | `metrics` + `tracing` | both of the above |
-| `all` | `deadline` + `health` + `metrics` + `settings` + `tracing` | everything |
+| `all` | `deadline` + `dishka` + `health` + `metrics` + `settings` + `tracing` | everything |
 
 `deadline` is deliberately **not** part of `observability`: propagating a
 budget is resilience, not telemetry, and an observability extra should not pull
@@ -266,6 +268,7 @@ in a dependency that changes what calls do.
 `import grpc_client_kit` never requires an extra. `HealthChecker` is the one
 gated export: it is resolved on first attribute access, and without
 `[health]` that access raises an `ImportError` naming the extra to install.
-`grpc_client_kit.settings` is a module rather than an export and imports
-pydantic when it is imported; without `[settings]` that import raises an
-`ImportError` naming the extra.
+`grpc_client_kit.settings`, `grpc_client_kit.metrics` and
+`grpc_client_kit.dishka` are modules rather than exports and import their
+dependency when they are imported; without `[settings]`, `[metrics]` or
+`[dishka]` that import raises an `ImportError` naming the extra.

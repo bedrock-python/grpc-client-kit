@@ -128,3 +128,4 @@ even though `UNAVAILABLE` is otherwise retryable.
 | [Load balancing](load-balancing.md) | Strategies and how health narrows them |
 | [Health checking](health.md) | The probe loop, cold start, backoff |
 | [Observability](observability.md) | What the logs, metrics and spans actually contain |
+| [Dependency injection](dependency-injection.md) | The Dishka providers, and one component per upstream |
