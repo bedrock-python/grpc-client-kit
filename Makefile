@@ -1,7 +1,7 @@
 .PHONY: test test-unit test-integration fmt check build install docs-serve docs-build clean
 
 install:
-	uv sync --group dev
+	uv sync --group dev --all-extras
 
 fmt:
 	uv run ruff format .

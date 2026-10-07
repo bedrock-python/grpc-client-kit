@@ -7,7 +7,7 @@ Thank you for your interest in contributing! This document covers everything you
 ```bash
 git clone https://github.com/bedrock-python/grpc-client-kit.git
 cd grpc-client-kit
-uv sync --group dev
+uv sync --group dev --all-extras
 uv run pre-commit install --hook-type commit-msg
 ```
 
@@ -16,7 +16,7 @@ uv run pre-commit install --hook-type commit-msg
 ```bash
 make check            # ruff lint + format check + mypy
 make test-unit        # unit tests, no Docker required
-make test-integration # integration tests, requires Docker
+make test-integration # integration tests on in-process gRPC servers, no Docker required
 make test             # full suite with 90% coverage threshold
 ```
 
