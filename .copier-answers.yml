@@ -1,0 +1,13 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: d9d0a6f
+_src_path: gh:bedrock-python/python-library-template
+author_email: shalaevad.alexey@gmail.com
+author_name: Alexey Shalaev
+github_org: bedrock-python
+initial_version: 0.0.0
+package_name: grpc_client_kit
+project_description: Batteries-optional async gRPC client toolkit (channel pool, load
+    balancing, health checking, streaming-aware interceptors, observability)
+project_name: grpc-client-kit
+project_slug: grpc-client-kit
+python_min_version: '3.12'
